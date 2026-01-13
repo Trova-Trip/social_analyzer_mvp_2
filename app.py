@@ -9,6 +9,8 @@ import base64
 
 app = Flask(__name__)
 
+print("=== APP VERSION: v2025-01-13-COLLECTION-FIX ===")
+
 # Configuration from environment variables
 INSIGHTIQ_USERNAME = os.getenv('INSIGHTIQ_USERNAME')
 INSIGHTIQ_PASSWORD = os.getenv('INSIGHTIQ_PASSWORD')
