@@ -126,7 +126,7 @@ def fetch_social_content(profile_url: str) -> Dict[str, Any]:
         raise
 
 
-def rehost_media_on_r2(media_url: str, contact_id: str) -> str:
+def rehost_media_on_r2(media_url: str, contact_id: str, media_format: str) -> str:
     """Download media from Instagram CDN and upload to R2, return public URL"""
     if not r2_client:
         print("R2 client not available, returning original URL")
@@ -140,17 +140,24 @@ def rehost_media_on_r2(media_url: str, contact_id: str) -> str:
         
         # Generate unique filename
         url_hash = hashlib.md5(media_url.encode()).hexdigest()
-        extension = media_url.split('.')[-1].split('?')[0]  # Get extension before query params
         
-        # Ensure valid extension
-        if extension not in ['jpg', 'jpeg', 'png', 'gif', 'webp', 'mp4', 'mov']:
-            extension = 'jpg'  # Default to jpg
+        # Determine extension based on media format
+        if media_format == 'VIDEO':
+            extension = 'mp4'
+        else:
+            # Try to get extension from URL
+            extension = media_url.split('.')[-1].split('?')[0]
+            if extension not in ['jpg', 'jpeg', 'png', 'gif', 'webp']:
+                extension = 'jpg'  # Default to jpg
         
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         object_key = f"social_content/{contact_id}/{timestamp}_{url_hash}.{extension}"
         
         # Determine content type
-        content_type = media_response.headers.get('content-type', 'image/jpeg')
+        if media_format == 'VIDEO':
+            content_type = 'video/mp4'
+        else:
+            content_type = media_response.headers.get('content-type', 'image/jpeg')
         
         # Upload to R2
         print(f"Uploading to R2: {object_key}")
@@ -458,7 +465,7 @@ def handle_webhook():
             
             # Re-host media on R2
             print(f"STEP 2.{idx}: Original URL: {media_url[:100]}...")
-            rehosted_url = rehost_media_on_r2(media_url, contact_id)
+            rehosted_url = rehost_media_on_r2(media_url, contact_id, media_format)
             print(f"STEP 2.{idx}: Re-hosted URL: {rehosted_url[:100]}...")
             
             try:
