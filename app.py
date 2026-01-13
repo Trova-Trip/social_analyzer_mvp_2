@@ -6,16 +6,26 @@ from typing import Dict, List, Any
 from datetime import datetime
 import tempfile
 import base64
+import hashlib
+import boto3
+from botocore.client import Config
 
 app = Flask(__name__)
 
 # Configuration from environment variables
 INSIGHTIQ_USERNAME = os.getenv('INSIGHTIQ_USERNAME')
 INSIGHTIQ_PASSWORD = os.getenv('INSIGHTIQ_PASSWORD')
-INSIGHTIQ_WORK_PLATFORM_ID = os.getenv('INSIGHTIQ_WORK_PLATFORM_ID')  # Set this manually
-INSIGHTIQ_API_URL = os.getenv('INSIGHTIQ_API_URL', 'https://api.sandbox.insightiq.ai')  # Defaults to sandbox
+INSIGHTIQ_WORK_PLATFORM_ID = os.getenv('INSIGHTIQ_WORK_PLATFORM_ID')
+INSIGHTIQ_API_URL = os.getenv('INSIGHTIQ_API_URL', 'https://api.sandbox.insightiq.ai')
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 HUBSPOT_WEBHOOK_URL = os.getenv('HUBSPOT_WEBHOOK_URL')
+
+# R2 Configuration
+R2_ACCESS_KEY_ID = os.getenv('R2_ACCESS_KEY_ID')
+R2_SECRET_ACCESS_KEY = os.getenv('R2_SECRET_ACCESS_KEY')
+R2_BUCKET_NAME = os.getenv('R2_BUCKET_NAME')
+R2_ENDPOINT_URL = os.getenv('R2_ENDPOINT_URL')
+R2_PUBLIC_URL = os.getenv('R2_PUBLIC_URL')
 
 # Check required environment variables
 required_vars = {
@@ -23,13 +33,37 @@ required_vars = {
     'INSIGHTIQ_PASSWORD': INSIGHTIQ_PASSWORD,
     'INSIGHTIQ_WORK_PLATFORM_ID': INSIGHTIQ_WORK_PLATFORM_ID,
     'OPENAI_API_KEY': OPENAI_API_KEY,
-    'HUBSPOT_WEBHOOK_URL': HUBSPOT_WEBHOOK_URL
+    'HUBSPOT_WEBHOOK_URL': HUBSPOT_WEBHOOK_URL,
+    'R2_ACCESS_KEY_ID': R2_ACCESS_KEY_ID,
+    'R2_SECRET_ACCESS_KEY': R2_SECRET_ACCESS_KEY,
+    'R2_BUCKET_NAME': R2_BUCKET_NAME,
+    'R2_ENDPOINT_URL': R2_ENDPOINT_URL,
+    'R2_PUBLIC_URL': R2_PUBLIC_URL
 }
 
 missing_vars = [k for k, v in required_vars.items() if not v]
 if missing_vars:
     print(f"ERROR: Missing required environment variables: {', '.join(missing_vars)}")
     print("App cannot function without these variables!")
+
+# Initialize R2 client
+r2_client = None
+if R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY and R2_ENDPOINT_URL:
+    try:
+        r2_client = boto3.client(
+            's3',
+            endpoint_url=R2_ENDPOINT_URL,
+            aws_access_key_id=R2_ACCESS_KEY_ID,
+            aws_secret_access_key=R2_SECRET_ACCESS_KEY,
+            config=Config(signature_version='s3v4'),
+            region_name='auto'
+        )
+        print("R2 client initialized successfully")
+    except Exception as e:
+        print(f"ERROR initializing R2 client: {e}")
+        r2_client = None
+else:
+    print("WARNING: R2 credentials not set - re-hosting will be skipped")
 
 # Initialize OpenAI client - try/except for different versions
 client = None
@@ -90,6 +124,52 @@ def fetch_social_content(profile_url: str) -> Dict[str, Any]:
         print(f"HTTP Error: {e}")
         print(f"Response content: {response.text}")
         raise
+
+
+def rehost_media_on_r2(media_url: str, contact_id: str) -> str:
+    """Download media from Instagram CDN and upload to R2, return public URL"""
+    if not r2_client:
+        print("R2 client not available, returning original URL")
+        return media_url
+    
+    try:
+        # Download media
+        print(f"Downloading media from: {media_url[:100]}...")
+        media_response = requests.get(media_url, timeout=30)
+        media_response.raise_for_status()
+        
+        # Generate unique filename
+        url_hash = hashlib.md5(media_url.encode()).hexdigest()
+        extension = media_url.split('.')[-1].split('?')[0]  # Get extension before query params
+        
+        # Ensure valid extension
+        if extension not in ['jpg', 'jpeg', 'png', 'gif', 'webp', 'mp4', 'mov']:
+            extension = 'jpg'  # Default to jpg
+        
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        object_key = f"social_content/{contact_id}/{timestamp}_{url_hash}.{extension}"
+        
+        # Determine content type
+        content_type = media_response.headers.get('content-type', 'image/jpeg')
+        
+        # Upload to R2
+        print(f"Uploading to R2: {object_key}")
+        r2_client.put_object(
+            Bucket=R2_BUCKET_NAME,
+            Key=object_key,
+            Body=media_response.content,
+            ContentType=content_type
+        )
+        
+        # Return public URL
+        public_url = f"{R2_PUBLIC_URL}/{object_key}"
+        print(f"Media re-hosted successfully: {public_url}")
+        return public_url
+        
+    except Exception as e:
+        print(f"ERROR re-hosting media: {e}")
+        print("Falling back to original URL")
+        return media_url
 
 
 def determine_media_format(media_url: str) -> str:
@@ -376,11 +456,14 @@ def handle_webhook():
                 print(f"STEP 2.{idx}: No media URL found, skipping")
                 continue
             
-            print(f"STEP 2.{idx}: Final URL (first 100 chars): {media_url[:100]}...")
+            # Re-host media on R2
+            print(f"STEP 2.{idx}: Original URL: {media_url[:100]}...")
+            rehosted_url = rehost_media_on_r2(media_url, contact_id)
+            print(f"STEP 2.{idx}: Re-hosted URL: {rehosted_url[:100]}...")
             
             try:
                 print(f"STEP 2.{idx}: Analyzing {media_format}...")
-                analysis = analyze_content_item(media_url, media_format)
+                analysis = analyze_content_item(rehosted_url, media_format)
                 
                 # Add the description from InsightIQ to the analysis
                 analysis['description'] = description
