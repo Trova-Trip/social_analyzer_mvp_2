@@ -2,7 +2,6 @@ import os
 import json
 import requests
 from flask import Flask, request, jsonify
-from openai import OpenAI
 from typing import Dict, List, Any
 from datetime import datetime
 import tempfile
@@ -32,17 +31,27 @@ if missing_vars:
     print(f"ERROR: Missing required environment variables: {', '.join(missing_vars)}")
     print("App cannot function without these variables!")
 
-# Initialize OpenAI client
+# Initialize OpenAI client - try/except for different versions
+client = None
 if not OPENAI_API_KEY:
     print("CRITICAL ERROR: OPENAI_API_KEY is not set!")
-    client = None
 else:
     try:
+        # Try newer import style first
+        from openai import OpenAI
         client = OpenAI(api_key=OPENAI_API_KEY)
-        print("OpenAI client initialized successfully")
-    except Exception as e:
-        print(f"ERROR initializing OpenAI client: {e}")
-        client = None
+        print("OpenAI client initialized successfully (new style)")
+    except (ImportError, TypeError) as e:
+        print(f"New style failed: {e}, trying old style...")
+        try:
+            # Fallback to older import style
+            import openai
+            openai.api_key = OPENAI_API_KEY
+            client = openai
+            print("OpenAI client initialized successfully (old style)")
+        except Exception as e2:
+            print(f"ERROR initializing OpenAI client: {e2}")
+            client = None
 
 
 def fetch_social_content(profile_url: str) -> Dict[str, Any]:
