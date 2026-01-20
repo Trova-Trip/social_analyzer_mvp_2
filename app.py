@@ -611,7 +611,8 @@ def handle_webhook():
             "contact_id": contact_id,
             "items_processed": len(content_analyses),
             "lead_score": lead_analysis['lead_score'],
-            "summary": lead_analysis['summary']
+            "summary": lead_analysis['summary'],
+            "creator_profile": creator_profile
         }), 200
         
     except Exception as e:
