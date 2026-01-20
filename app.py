@@ -298,8 +298,66 @@ Respond in JSON format:
         }
 
 
-def generate_lead_analysis(content_analyses: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """Combine all content summaries and generate a single lead score"""
+def generate_creator_profile(content_analyses: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Generate a structured creator profile based on content summaries"""
+    
+    # Extract all the individual summaries AND descriptions
+    summaries = []
+    for idx, item in enumerate(content_analyses, 1):
+        summary_text = f"Content {idx} ({item['type']}): {item['summary']}"
+        if item.get('description'):
+            summary_text += f"\nOriginal Post Description: {item['description']}"
+        summaries.append(summary_text)
+    
+    combined_summaries = "\n\n".join(summaries)
+    
+    # Generate structured creator profile
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {
+                "role": "system",
+                "content": """You are a social media analyst who creates detailed creator profiles. Analyze the content summaries to understand the creator's content strategy, audience engagement, and monetization approach."""
+            },
+            {
+                "role": "user",
+                "content": f"""Based on these content summaries, create a structured creator profile covering these aspects:
+
+1. Content Category/Theme: What is the primary category or theme of content this creator posts? (e.g., hiking/backpacking, fitness, fashion/beauty, books/literature, food/cooking, travel, technology, etc.)
+
+2. Content Types: What types of things does the creator share in their content? (e.g., advice/expertise, personal updates, entertaining content, educational content, product reviews, tutorials, storytelling, etc.)
+
+3. Audience Engagement: To what degree does the creator address their audience directly or invite them to join the discourse? (e.g., frequently speaks directly to camera, uses second-person language in captions, asks questions, encourages comments, rarely addresses audience directly, etc.)
+
+4. Creator Presence: How frequently is the creator in front of the camera or present in their content? (e.g., always visible, frequently visible, occasionally visible, rarely visible, never visible)
+
+5. Monetization: Does the creator monetize their audience by advertising products or services in their content? (e.g., yes with frequent ads, yes with occasional sponsorships, subtle product placements, no visible monetization)
+
+6. Community Building: Does the creator invite their audience to join a mailing list, Patreon, Discord, Substack, Facebook group, or other community platform in their content? (e.g., yes with specific calls-to-action, mentions community platforms, no community building efforts visible)
+
+CONTENT SUMMARIES:
+{combined_summaries}
+
+Respond in JSON format:
+{{
+  "content_category": "primary category/theme",
+  "content_types": ["type1", "type2", "type3"],
+  "audience_engagement": "description of how they engage audience",
+  "creator_presence": "description of their on-camera presence",
+  "monetization": "description of monetization approach",
+  "community_building": "description of community building efforts"
+}}"""
+            }
+        ],
+        response_format={"type": "json_object"}
+    )
+    
+    result = json.loads(response.choices[0].message.content)
+    return result
+
+
+def generate_lead_analysis(content_analyses: List[Dict[str, Any]], creator_profile: Dict[str, Any]) -> Dict[str, Any]:
+    """Combine all content summaries and creator profile to generate a single lead score"""
     
     # Extract all the individual summaries AND descriptions
     summaries = []
@@ -315,13 +373,22 @@ def generate_lead_analysis(content_analyses: List[Dict[str, Any]]) -> Dict[str, 
     
     combined_summaries = "\n\n".join(summaries)
     
+    # Format creator profile for context
+    profile_context = f"""CREATOR PROFILE:
+- Content Category: {creator_profile.get('content_category', 'Unknown')}
+- Content Types: {', '.join(creator_profile.get('content_types', []))}
+- Audience Engagement: {creator_profile.get('audience_engagement', 'Unknown')}
+- Creator Presence: {creator_profile.get('creator_presence', 'Unknown')}
+- Monetization: {creator_profile.get('monetization', 'Unknown')}
+- Community Building: {creator_profile.get('community_building', 'Unknown')}"""
+    
     # Single comprehensive analysis
     response = client.chat.completions.create(
         model="gpt-4o",
         messages=[
             {
                 "role": "system",
-                "content": """You are a social media lead scoring analyst. Based on a creator's content summaries, you assess:
+                "content": """You are a social media lead scoring analyst. Based on a creator's content summaries and profile, you assess:
 - Content quality and professionalism
 - Engagement potential and audience appeal
 - Brand alignment and messaging consistency
@@ -335,10 +402,12 @@ Provide a lead score from 0.0 to 1.0 where:
             },
             {
                 "role": "user",
-                "content": f"""Based on these individual content summaries (which include both AI analysis and original post descriptions), provide:
+                "content": f"""Based on this creator's profile and content summaries, provide:
 
 1. The combined content summaries (concatenate them with separators like " | " or similar)
 2. A single lead score from 0.0 to 1.0 based on their overall potential as a lead
+
+{profile_context}
 
 INDIVIDUAL CONTENT SUMMARIES:
 {combined_summaries}
@@ -415,7 +484,7 @@ def handle_webhook():
             print(f"ERROR: No content items found. Available keys: {list(social_data.keys()) if isinstance(social_data, dict) else 'N/A'}")
             return jsonify({"error": "No content found in InsightIQ response", "response_keys": list(social_data.keys()) if isinstance(social_data, dict) else []}), 404
         
-        for idx, item in enumerate(content_items[:3], 1):  # Process up to 3 items for MVP
+        for idx, item in enumerate(content_items[:5], 1):  # Process up to 5 items for MVP
             print(f"STEP 2.{idx}: Processing content item {idx}/{min(5, len(content_items))}")
             
             # Extract content type and format
@@ -490,19 +559,26 @@ def handle_webhook():
         if not content_analyses:
             return jsonify({"error": "No content found to analyze"}), 404
         
-        # Step 4: Generate single lead score and combined summary based on all content
-        print(f"STEP 4: Generating lead analysis...")
-        lead_analysis = generate_lead_analysis(content_analyses)
-        print(f"STEP 4 COMPLETE: Lead score: {lead_analysis['lead_score']}")
+        # Step 4: Generate creator profile
+        print(f"STEP 4: Generating creator profile...")
+        creator_profile = generate_creator_profile(content_analyses)
+        print(f"STEP 4 COMPLETE: Creator profile generated")
+        print(f"  - Category: {creator_profile.get('content_category')}")
+        print(f"  - Monetization: {creator_profile.get('monetization')}")
         
-        # Step 5: Send to HubSpot
-        print(f"STEP 5: Sending results to HubSpot...")
+        # Step 5: Generate lead score using creator profile and content summaries
+        print(f"STEP 5: Generating lead analysis...")
+        lead_analysis = generate_lead_analysis(content_analyses, creator_profile)
+        print(f"STEP 5 COMPLETE: Lead score: {lead_analysis['lead_score']}")
+        
+        # Step 6: Send to HubSpot
+        print(f"STEP 6: Sending results to HubSpot...")
         send_to_hubspot(
             contact_id,
             lead_analysis['summary'],
             lead_analysis['lead_score']
         )
-        print(f"STEP 5 COMPLETE: Results sent to HubSpot")
+        print(f"STEP 6 COMPLETE: Results sent to HubSpot")
         
         print("=== WEBHOOK COMPLETE ===")
         
