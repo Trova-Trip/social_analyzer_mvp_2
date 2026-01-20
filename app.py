@@ -507,7 +507,7 @@ def handle_webhook():
             print(f"ERROR: No content items found. Available keys: {list(social_data.keys()) if isinstance(social_data, dict) else 'N/A'}")
             return jsonify({"error": "No content found in InsightIQ response", "response_keys": list(social_data.keys()) if isinstance(social_data, dict) else []}), 404
         
-        for idx, item in enumerate(content_items[:5], 1):  # Process up to 5 items for MVP
+        for idx, item in enumerate(content_items[:3], 1):  # Process up to 5 items for MVP
             print(f"STEP 2.{idx}: Processing content item {idx}/{min(5, len(content_items))}")
             
             # Extract content type and format
