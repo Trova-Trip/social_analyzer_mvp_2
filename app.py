@@ -546,6 +546,68 @@ def send_to_hubspot(contact_id: str, lead_score: float, section_scores: Dict[str
     return response.json()
 
 
+from tasks import process_creator_profile
+
+@app.route('/webhook/async', methods=['POST'])
+def handle_webhook_async():
+    """Async webhook handler - returns immediately, processes in background"""
+    try:
+        data = request.get_json()
+        
+        contact_id = data.get('contact_id')
+        profile_url = data.get('profile_url')
+        
+        if not all([contact_id, profile_url]):
+            return jsonify({"error": "Missing required fields: contact_id, profile_url"}), 400
+        
+        # Queue the task
+        task = process_creator_profile.delay(contact_id, profile_url)
+        
+        print(f"=== QUEUED: {contact_id} - Task ID: {task.id} ===")
+        
+        return jsonify({
+            "status": "queued",
+            "contact_id": contact_id,
+            "task_id": task.id,
+            "message": "Profile queued for processing"
+        }), 202
+        
+    except Exception as e:
+        print(f"Error queuing task: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/webhook/status/<task_id>', methods=['GET'])
+def check_task_status(task_id):
+    """Check status of a queued task"""
+    from celery.result import AsyncResult
+    
+    task = AsyncResult(task_id, app=process_creator_profile.app)
+    
+    if task.state == 'PENDING':
+        response = {
+            'state': task.state,
+            'status': 'Task is waiting in queue...'
+        }
+    elif task.state == 'PROGRESS':
+        response = {
+            'state': task.state,
+            'status': task.info.get('stage', 'Processing...'),
+        }
+    elif task.state == 'SUCCESS':
+        response = {
+            'state': task.state,
+            'result': task.result
+        }
+    else:  # FAILURE or other
+        response = {
+            'state': task.state,
+            'status': str(task.info),
+        }
+    
+    return jsonify(response)
+
+
 @app.route('/webhook', methods=['POST'])
 def handle_webhook():
     """Main webhook handler"""
