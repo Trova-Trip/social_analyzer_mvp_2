@@ -372,7 +372,7 @@ Respond in JSON format:
 
 
 def generate_lead_analysis(content_analyses: List[Dict[str, Any]], creator_profile: Dict[str, Any]) -> Dict[str, Any]:
-    """Combine all content summaries and creator profile to generate a single lead score"""
+    """Combine all content summaries and creator profile to generate a TrovaTrip-specific lead score"""
     
     # Extract all the individual summaries AND descriptions
     summaries = []
@@ -397,19 +397,21 @@ def generate_lead_analysis(content_analyses: List[Dict[str, Any]], creator_profi
 - Monetization: {creator_profile.get('monetization', 'Unknown')}
 - Community Building: {creator_profile.get('community_building', 'Unknown')}"""
     
-    # Single comprehensive analysis
+    # TrovaTrip-specific scoring
     response = client.chat.completions.create(
         model="gpt-4o",
         messages=[
             {
                 "role": "system",
-                "content": """You are a social media lead scoring analyst. Based on a creator's content summaries and profile, you assess:
-- Content quality and professionalism
-- Engagement potential and audience appeal
-- Brand alignment and messaging consistency
-- Overall value as a potential business lead
+                "content": """You are a social media lead scoring analyst and you score creators for TrovaTrip.
 
-Provide a lead score from 0.0 to 1.0 where:
+COMPANY CONTEXT:
+TrovaTrip is a platform that allows content creators, community leaders, and entrepreneurs to "host" group travel experiences with their audience/community around the globe. The Host is responsible for generating the bookings for their trip by marketing it to their audience/community. The Host gets paid for each trip based on bookings sold and travels for free, attending the trip with their travelers.
+
+YOUR ROLE:
+You score creators based on the likelihood that they will be interested in hosting a trip with their audience/community and the likelihood that they will be successful selling a trip to their audience/community. i.e. the degree to which the creator's audience/community is likely to be interested in connecting with each other and the creator in real life.
+
+SCORING GUIDE:
 - 0.0-0.3: Low quality, poor engagement potential
 - 0.3-0.6: Moderate quality, some potential
 - 0.6-0.8: Good quality, strong potential
@@ -417,20 +419,52 @@ Provide a lead score from 0.0 to 1.0 where:
             },
             {
                 "role": "user",
-                "content": f"""Based on this creator's profile and content summaries, provide:
-
-1. The combined content summaries (concatenate them with separators like " | " or similar)
-2. A single lead score from 0.0 to 1.0 based on their overall potential as a lead
+                "content": f"""Based on this creator's profile and content summaries, score them using the TrovaTrip rubric.
 
 {profile_context}
 
-INDIVIDUAL CONTENT SUMMARIES:
+CONTENT SUMMARIES:
 {combined_summaries}
+
+SCORING RUBRIC - Score each section 0.0 to 1.0:
+
+1. NICHE & AUDIENCE IDENTITY (0.0-1.0)
+- Clear, specific niche (e.g., history nerds, bookish romance readers, widows, queer women, nurses, DINKs, vanlife, interior design, outdoor science, dating/relationship)
+- Followers share a recognizable identity or interest that could shape a trip: "my widows community," "queer girls," "book club," "DINK finance/lifestyle," "royal gossip/history nerds"
+- People know exactly what they go to the Host for
+
+2. HOST LIKEABILITY & CONTENT STYLE (0.0-1.0)
+- Face-forward: Host regularly appears on camera, talks directly to their audience
+- Warm, fun, safe, inclusive vibes → "I'd travel with them"
+- Tone is inclusive, warm, and conversational (not sterile or purely aesthetic)
+- Content already features experiences, trips, or "come with me" energy
+
+3. MONETIZATION & BUSINESS MINDSET (0.0-1.0)
+- Already monetizing in at least one way: Coaching/consults, interior design sessions, readings (tarot, astrology), courses/workshops, digital products, shop/Amazon storefront, merch, paid communities, Patreon, brand deals
+- Audience is conditioned to pay for access or expertise
+- Host is comfortable selling and running launches (deadlines, limited spots, bonuses, etc.)
+
+4. COMMUNITY INFRASTRUCTURE/OWNED CHANNELS (0.0-1.0)
+- Has at least one "depth" or owned channel: Email list, podcast, YouTube, FB group, Discord, Patreon, in-person groups, membership/sisterhood/book club, etc.
+- Can reach audience without relying solely on one social platform's algorithm
+- Ideally already communicates on a cadence (e.g., weekly newsletter or podcast)
+
+5. TRIP FIT & AUDIENCE TRAVELABILITY (0.0-1.0)
+- Niche naturally aligns with a trip concept (history in Europe, archaeology in Egypt, bookish tours in Ireland, vanlife/adventure trips, food & wine in Italy, grief/empowerment retreats, etc.)
+- Audience life stage and finances make group travel realistic: DINKs, mid-career professionals, older wellness audiences, nurses, etc.
+- Host already travels and shares it, or audience has expressed desire to travel with them
 
 Respond in JSON format:
 {{
-  "combined_summary": "Content 1: [summary] | Content 2: [summary] | ...",
-  "lead_score": 0.85
+  "section_scores": {{
+    "niche_and_audience_identity": 0.0-1.0,
+    "host_likeability_and_content_style": 0.0-1.0,
+    "monetization_and_business_mindset": 0.0-1.0,
+    "community_infrastructure": 0.0-1.0,
+    "trip_fit_and_travelability": 0.0-1.0
+  }},
+  "combined_lead_score": 0.0-1.0,
+  "score_reasoning": "Brief explanation of the combined score based on the five sections"
 }}"""
             }
         ],
@@ -439,25 +473,70 @@ Respond in JSON format:
     
     result = json.loads(response.choices[0].message.content)
     return {
-        "summary": result['combined_summary'],
-        "lead_score": result['lead_score']
+        "section_scores": result.get('section_scores', {}),
+        "lead_score": result.get('combined_lead_score', 0.0),
+        "score_reasoning": result.get('score_reasoning', '')
     }
 
 
-def send_to_hubspot(contact_id: str, summary: str, lead_score: float, creator_profile: Dict[str, Any]):
+def send_to_hubspot(contact_id: str, lead_score: float, section_scores: Dict[str, float], score_reasoning: str, creator_profile: Dict[str, Any], content_analyses: List[Dict[str, Any]]):
     """Send results back to HubSpot via webhook"""
+    
+    # Extract personalization hooks from content
+    content_summaries_structured = []
+    
+    for idx, item in enumerate(content_analyses, 1):
+        content_summaries_structured.append(f"Content {idx} ({item['type']}): {item['summary']}")
+    
+    # Detect community platforms mentioned
+    community_text = creator_profile.get('community_building', '').lower()
+    community_platforms = []
+    platform_keywords = {
+        'email list': 'Email List',
+        'newsletter': 'Newsletter', 
+        'mailing list': 'Mailing List',
+        'patreon': 'Patreon',
+        'discord': 'Discord',
+        'substack': 'Substack',
+        'facebook group': 'Facebook Group',
+        'community': 'Community Platform'
+    }
+    
+    for keyword, platform_name in platform_keywords.items():
+        if keyword in community_text:
+            if platform_name not in community_platforms:
+                community_platforms.append(platform_name)
+    
+    has_community_platform = len(community_platforms) > 0
+    
     payload = {
         "contact_id": contact_id,
-        "summary": summary,
         "lead_score": lead_score,
-        "creator_profile": {
-            "content_category": creator_profile.get('content_category'),
-            "content_types": creator_profile.get('content_types'),
-            "audience_engagement": creator_profile.get('audience_engagement'),
-            "creator_presence": creator_profile.get('creator_presence'),
-            "monetization": creator_profile.get('monetization'),
-            "community_building": creator_profile.get('community_building')
-        },
+        "score_reasoning": score_reasoning,
+        
+        # Section scores
+        "score_niche_and_audience": section_scores.get('niche_and_audience_identity', 0.0),
+        "score_host_likeability": section_scores.get('host_likeability_and_content_style', 0.0),
+        "score_monetization": section_scores.get('monetization_and_business_mindset', 0.0),
+        "score_community_infrastructure": section_scores.get('community_infrastructure', 0.0),
+        "score_trip_fit": section_scores.get('trip_fit_and_travelability', 0.0),
+        
+        # Structured content summaries
+        "content_summary_structured": "\n\n".join(content_summaries_structured),
+        
+        # Flattened creator profile for easy access
+        "profile_category": creator_profile.get('content_category'),
+        "profile_content_types": ", ".join(creator_profile.get('content_types', [])),
+        "profile_tone": creator_profile.get('audience_engagement', ''),
+        "profile_engagement": creator_profile.get('audience_engagement', ''),
+        "profile_presence": creator_profile.get('creator_presence', ''),
+        "profile_monetization": creator_profile.get('monetization', ''),
+        "profile_community_building": creator_profile.get('community_building', ''),
+        
+        # Community platform detection
+        "has_community_platform": has_community_platform,
+        "community_platforms_detected": ", ".join(community_platforms) if community_platforms else "None detected",
+        
         "analyzed_at": datetime.now().isoformat()
     }
     
@@ -507,7 +586,7 @@ def handle_webhook():
             print(f"ERROR: No content items found. Available keys: {list(social_data.keys()) if isinstance(social_data, dict) else 'N/A'}")
             return jsonify({"error": "No content found in InsightIQ response", "response_keys": list(social_data.keys()) if isinstance(social_data, dict) else []}), 404
         
-        for idx, item in enumerate(content_items[:3], 1):  # Process up to 5 items for MVP
+        for idx, item in enumerate(content_items[:5], 1):  # Process up to 5 items for MVP
             print(f"STEP 2.{idx}: Processing content item {idx}/{min(5, len(content_items))}")
             
             # Extract content type and format
@@ -590,17 +669,20 @@ def handle_webhook():
         print(f"  - Monetization: {creator_profile.get('monetization')}")
         
         # Step 5: Generate lead score using creator profile and content summaries
-        print(f"STEP 5: Generating lead analysis...")
+        print(f"STEP 5: Generating TrovaTrip lead analysis...")
         lead_analysis = generate_lead_analysis(content_analyses, creator_profile)
         print(f"STEP 5 COMPLETE: Lead score: {lead_analysis['lead_score']}")
+        print(f"  - Section scores: {lead_analysis.get('section_scores', {})}")
         
         # Step 6: Send to HubSpot
         print(f"STEP 6: Sending results to HubSpot...")
         send_to_hubspot(
             contact_id,
-            lead_analysis['summary'],
             lead_analysis['lead_score'],
-            creator_profile
+            lead_analysis.get('section_scores', {}),
+            lead_analysis.get('score_reasoning', ''),
+            creator_profile,
+            content_analyses
         )
         print(f"STEP 6 COMPLETE: Results sent to HubSpot")
         
@@ -611,7 +693,8 @@ def handle_webhook():
             "contact_id": contact_id,
             "items_processed": len(content_analyses),
             "lead_score": lead_analysis['lead_score'],
-            "summary": lead_analysis['summary'],
+            "section_scores": lead_analysis.get('section_scores', {}),
+            "score_reasoning": lead_analysis.get('score_reasoning', ''),
             "creator_profile": creator_profile
         }), 200
         
