@@ -233,21 +233,52 @@ def generate_lead_score(content_analyses: List[Dict[str, Any]], creator_profile:
         model="gpt-4o",
         messages=[{
             "role": "system",
-            "content": "You score creators for TrovaTrip (group travel platform). Score 5 sections 0-1: niche/audience, likeability, monetization, community infrastructure, trip fit."
+            "content": "You score creators for TrovaTrip (group travel platform). You must score 5 sections between 0-1."
         }, {
             "role": "user",
             "content": f"""{profile_context}
 
 CONTENT: {combined}
 
-Score each TrovaTrip section and provide combined score + reasoning in JSON."""
+Provide scores for these 5 sections (each 0.0 to 1.0):
+1. niche_and_audience_identity - How well-defined is their niche and audience?
+2. host_likeability_and_content_style - How likeable and engaging is the creator?
+3. monetization_and_business_mindset - Do they show business/monetization capability?
+4. community_infrastructure - Do they have platforms to gather their community (email, Discord, Patreon, etc)?
+5. trip_fit_and_travelability - How well does their content fit with group travel experiences?
+
+Also provide:
+- combined_lead_score: Average of all 5 scores (0.0 to 1.0)
+- score_reasoning: 2-3 sentences explaining the overall assessment
+
+Respond ONLY with JSON in this exact format:
+{{
+  "niche_and_audience_identity": 0.0,
+  "host_likeability_and_content_style": 0.0,
+  "monetization_and_business_mindset": 0.0,
+  "community_infrastructure": 0.0,
+  "trip_fit_and_travelability": 0.0,
+  "combined_lead_score": 0.0,
+  "score_reasoning": "..."
+}}"""
         }],
         response_format={"type": "json_object"}
     )
     
     result = json.loads(response.choices[0].message.content)
+    print(f"GPT Lead Score Response: {json.dumps(result, indent=2)}")
+    
+    # Extract section scores
+    section_scores = {
+        "niche_and_audience_identity": result.get('niche_and_audience_identity', 0.0),
+        "host_likeability_and_content_style": result.get('host_likeability_and_content_style', 0.0),
+        "monetization_and_business_mindset": result.get('monetization_and_business_mindset', 0.0),
+        "community_infrastructure": result.get('community_infrastructure', 0.0),
+        "trip_fit_and_travelability": result.get('trip_fit_and_travelability', 0.0)
+    }
+    
     return {
-        "section_scores": result.get('section_scores', {}),
+        "section_scores": section_scores,
         "lead_score": result.get('combined_lead_score', 0.0),
         "score_reasoning": result.get('score_reasoning', '')
     }
