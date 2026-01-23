@@ -52,7 +52,6 @@ if OPENAI_API_KEY:
         print(f"ERROR initializing OpenAI client: {e}")
 
 
-# Import all the functions from app.py
 def fetch_social_content(profile_url: str) -> Dict[str, Any]:
     """Fetch content from InsightIQ API"""
     url = f"{INSIGHTIQ_API_URL}/v1/social/creators/contents/fetch"
@@ -232,7 +231,7 @@ JSON format with those 6 fields as arrays/strings."""
 
 
 def generate_lead_score(content_analyses: List[Dict[str, Any]], creator_profile: Dict[str, Any]) -> Dict[str, Any]:
-    """Generate TrovaTrip lead score based on ICP criteria"""
+    """Generate TrovaTrip lead score based on ICP criteria - v1.1"""
     summaries = [f"Content {idx} ({item['type']}): {item['summary']}" for idx, item in enumerate(content_analyses, 1)]
     combined = "\n\n".join(summaries)
     
@@ -252,31 +251,11 @@ def generate_lead_score(content_analyses: List[Dict[str, Any]], creator_profile:
 
 CRITICAL: A good fit is someone whose AUDIENCE wants to meet each other AND the host in real life. Think: book clubs traveling to Ireland, widow communities on healing retreats, food bloggers doing culinary tours.
 
-AUTOMATIC DISQUALIFIERS - Score ALL sections 0.0-0.2 if ANY apply:
-1. UNSUPPORTED SPORTS/ACTIVITIES (requires specialized equipment/facilities we can't provide):
-   - Gymnastics (needs specialized equipment like bars, beams, vault)
-   - Golf (needs golf courses and equipment)
-   - Watersports (surfing, diving, fishing - requires specialized equipment/boats)
-   - Snowsports (skiing, snowboarding - requires mountains/resorts)
-   - Hunting, mountain biking, horseback riding
-   - Note: Dance, ballet, yoga, pilates, barre, pole dance ARE supported (we can secure studio space)
-   - Note: Hiking, camping, swimming, meditation ARE supported
-   
-2. INAPPROPRIATE CONTENT:
-   - Offensive content (racist, misogynistic, xenophobic)
-   - Sexual/explicit content (OnlyFans promotion, adult content)
-   - Firearms-focused content
-   
-3. NOT A PERSONAL CREATOR:
-   - Business accounts (restaurant, store, brand pages)
-   - Accounts that only repost others' content (meme pages, aggregators)
-   - No identifiable individual creator/host
-
-OTHER BAD FITS (score low but not automatic disqualification):
+BAD FITS to avoid:
 - Pure artists/performers with fan bases (not communities)
-- Very niche specialists where audience doesn't want group travel together
-- Religious/spiritual content as PRIMARY EXCLUSIVE focus (BUT: faith + lifestyle/travel/wellness is GOOD)
-- Creators without clear monetization AND without strong face-forward presence (need at least one)
+- Very niche specialists (ballet, physical therapy) where audience doesn't want group travel
+- Religious/spiritual content as primary focus (unless lifestyle/travel-oriented)
+- Creators without clear monetization (not business-minded)
 
 SCORING CRITERIA (0.0-1.0 each):"""
         }, {
@@ -285,38 +264,31 @@ SCORING CRITERIA (0.0-1.0 each):"""
 
 CONTENT: {combined}
 
-FIRST: Check for AUTOMATIC DISQUALIFIERS above. If ANY apply, score all sections 0.0-0.2 and explain why in reasoning.
-
-OTHERWISE, score these 5 sections (0.0 to 1.0):
+Score these 5 sections (0.0 to 1.0):
 
 1. **niche_and_audience_identity** (0.0-1.0)
-   HIGH scores (0.7-1.0): Clear lifestyle niche where audience shares identity (widows, DINKs, book lovers, history nerds, foodies, wellness seekers, outdoor enthusiasts, faith + lifestyle communities). People want to connect with EACH OTHER. Niche can be supported by standard group travel (no specialized equipment needed).
-   MID scores (0.5-0.6): Somewhat broad (humor, general lifestyle) BUT if host is very face-forward and engaging, audience likely wants to meet them.
-   LOW scores (0.0-0.4): Generic content, pure performance/art fans, religious-ONLY content (no lifestyle mix), very technical/specialized, requires unsupported sports/equipment, or unclear who the audience is.
+   HIGH scores (0.7-1.0): Clear lifestyle niche where audience shares identity (widows, DINKs, book lovers, history nerds, foodies, wellness seekers). People want to connect with EACH OTHER.
+   LOW scores (0.0-0.4): Generic content, pure performance/art fans, religious-primary content, very technical/specialized, or unclear who the audience is.
    
 2. **host_likeability_and_content_style** (0.0-1.0)
-   HIGH scores (0.7-1.0): Face-forward, appears regularly on camera, warm/conversational tone, shares experiences, "come with me" energy, feels like someone you'd travel with. Strong personality can compensate for less defined niche.
-   MID scores (0.5-0.6): Sometimes on camera, shows some personality but not consistently engaging.
-   LOW scores (0.0-0.4): Behind-the-camera content, aesthetic-only, formal/sterile tone, doesn't show personality, pure expertise without relatability, business account without personal host.
+   HIGH scores (0.7-1.0): Face-forward, appears regularly on camera, warm/conversational tone, shares experiences, "come with me" energy, feels like someone you'd travel with.
+   LOW scores (0.0-0.4): Behind-the-camera content, aesthetic-only, formal/sterile tone, doesn't show personality, pure expertise without relatability.
 
 3. **monetization_and_business_mindset** (0.0-1.0)
    HIGH scores (0.7-1.0): Already selling something (coaching, courses, products, Patreon, brand deals, services). Audience pays for access. Comfortable with sales/launches.
-   MID scores (0.4-0.6): Some monetization signs (affiliate links, sponsorships, building audience for future monetization) OR no clear monetization BUT very strong face-forward presence and audience engagement (shows business potential).
-   LOW scores (0.0-0.3): No monetization, only donations, free content only, AND not face-forward/engaging enough to suggest future business capability.
+   LOW scores (0.0-0.4): No monetization, only donations, free content only, or explicitly states "no monetization."
    
 4. **community_infrastructure** (0.0-1.0)
    HIGH scores (0.7-1.0): Has owned channels beyond social media (email list, podcast, YouTube, Patreon, Discord, membership, in-person groups). Can reach audience directly.
-   MID scores (0.4-0.6): Active social media with strong engagement, mentions of wanting to connect deeper with audience, building toward owned channels.
-   LOW scores (0.0-0.3): Only social media presence, no owned channels mentioned, purely algorithm-dependent.
+   LOW scores (0.0-0.4): Only social media presence, no owned channels mentioned, purely algorithm-dependent.
 
 5. **trip_fit_and_travelability** (0.0-1.0)
-   HIGH scores (0.7-1.0): Content naturally fits a trip we can support (food/wine tours, history tours, wellness retreats including specific health focuses, adventure travel with hiking/camping, cultural experiences, creative workshops, faith + travel experiences). Audience has money/time for travel (professionals, DINKs, older audiences, health-focused communities). Already travels or audience asks to travel together.
-   MID scores (0.5-0.6): Somewhat broad content (humor, general lifestyle) but host personality could anchor a "come hang with me" style trip. Or specific wellness niche (like TMJ, chronic illness) that fits wellness retreat model.
-   LOW scores (0.0-0.4): No natural trip concept, requires unsupported equipment/activities, very young/broke audience, content doesn't translate to group experiences, highly specialized/technical focus that wouldn't work as group travel.
+   HIGH scores (0.7-1.0): Content naturally fits a trip (food/wine tours, history tours, wellness retreats, adventure travel, cultural experiences). Audience has money/time for travel (professionals, DINKs, older audiences). Already travels or audience asks to travel together.
+   LOW scores (0.0-0.4): No natural trip concept, very young/broke audience, content doesn't translate to group experiences, highly specialized/technical focus.
 
 Also provide:
 - **combined_lead_score**: Weighted average: (niche × 0.25) + (likeability × 0.20) + (monetization × 0.25) + (community × 0.15) + (trip_fit × 0.15)
-- **score_reasoning**: 2-3 sentences on fit for group travel with their community. If disqualified, explain why.
+- **score_reasoning**: 2-3 sentences on fit for group travel with their community.
 
 RESPOND ONLY with JSON:
 {{
@@ -353,7 +325,7 @@ RESPOND ONLY with JSON:
 
 def send_to_hubspot(contact_id: str, lead_score: float, section_scores: Dict, score_reasoning: str, 
                     creator_profile: Dict, content_analyses: List[Dict]):
-    """Send results to HubSpot"""
+    """Send results to HubSpot with validation"""
     content_summaries = [f"Content {idx} ({item['type']}): {item['summary']}" 
                         for idx, item in enumerate(content_analyses, 1)]
     
@@ -362,11 +334,9 @@ def send_to_hubspot(contact_id: str, lead_score: float, section_scores: Dict, sc
         if value is None:
             return ''
         if isinstance(value, list):
-            # Filter out None values and convert all items to strings
             str_items = [str(item) for item in value if item is not None]
             return ', '.join(str_items)
         if isinstance(value, dict):
-            # Convert dict to JSON string
             return json.dumps(value)
         return str(value)
     
@@ -382,6 +352,32 @@ def send_to_hubspot(contact_id: str, lead_score: float, section_scores: Dict, sc
                          ('discord', 'Discord'), ('substack', 'Substack')]:
         if keyword in community_text and name not in platforms:
             platforms.append(name)
+    
+    # VALIDATION: Check for enrichment success
+    enrichment_status = "success"
+    error_details = []
+    
+    if not content_analyses or len(content_analyses) == 0:
+        enrichment_status = "error"
+        error_details.append("No content analyzed")
+    
+    if not score_reasoning or len(score_reasoning) < 10:
+        enrichment_status = "error"
+        error_details.append("Missing or invalid score reasoning")
+    
+    if lead_score == 0.0 and all(score == 0.0 for score in section_scores.values()):
+        enrichment_status = "warning"
+        error_details.append("All scores are 0.0 - possible disqualification or error")
+    
+    if not creator_profile.get('content_category'):
+        enrichment_status = "warning" if enrichment_status == "success" else "error"
+        error_details.append("Missing content category")
+    
+    # Check for placeholder/error text in reasoning
+    error_keywords = ['error', 'failed', 'could not', 'unable to', 'missing data', 'no content', 'unavailable']
+    if any(keyword in score_reasoning.lower() for keyword in error_keywords):
+        enrichment_status = "warning" if enrichment_status == "success" else enrichment_status
+        error_details.append("Error indicators found in reasoning")
     
     payload = {
         "contact_id": contact_id,
@@ -401,42 +397,43 @@ def send_to_hubspot(contact_id: str, lead_score: float, section_scores: Dict, sc
         "profile_community_building": safe_str(community_building),
         "has_community_platform": len(platforms) > 0,
         "community_platforms_detected": ", ".join(platforms) if platforms else "None",
-        "analyzed_at": datetime.now().isoformat()
+        "analyzed_at": datetime.now().isoformat(),
+        "enrichment_status": enrichment_status,
+        "enrichment_error_details": "; ".join(error_details) if error_details else "",
+        "items_analyzed": len(content_analyses)
     }
     
     print(f"Sending to HubSpot: {HUBSPOT_WEBHOOK_URL}")
+    print(f"Enrichment Status: {enrichment_status}")
+    if error_details:
+        print(f"Error Details: {'; '.join(error_details)}")
+    
     response = requests.post(HUBSPOT_WEBHOOK_URL, json=payload, timeout=10)
     print(f"HubSpot response: {response.status_code}")
 
 
 @celery_app.task(bind=True, name='tasks.process_creator_profile')
 def process_creator_profile(self, contact_id: str, profile_url: str):
-    """
-    Background task to process a creator profile
-    Returns task result that can be checked via task_id
-    """
+    """Background task to process a creator profile"""
     try:
         print(f"=== PROCESSING: {contact_id} ===")
         
-        # Update task state
         self.update_state(state='PROGRESS', meta={'stage': 'Fetching content from InsightIQ'})
         
-        # Fetch content
         social_data = fetch_social_content(profile_url)
         content_items = social_data.get('data', [])
         
         if not content_items:
             return {"status": "error", "message": "No content found"}
         
-        # Process content items - try up to 10 items to get 3 successful analyses
         self.update_state(state='PROGRESS', meta={'stage': 'Analyzing content'})
         
         content_analyses = []
-        items_to_try = min(10, len(content_items))  # Try up to 10 items
+        items_to_try = min(10, len(content_items))
         
         for idx, item in enumerate(content_items[:items_to_try], 1):
             if len(content_analyses) >= 3:
-                break  # Stop once we have 3 successful analyses
+                break
             
             print(f"Processing item {idx}/{items_to_try} (have {len(content_analyses)} successful so far)")
             
@@ -444,7 +441,6 @@ def process_creator_profile(self, contact_id: str, profile_url: str):
             media_url = None
             media_format = None
             
-            # Determine media URL and format
             if content_format == 'VIDEO':
                 media_url = item.get('media_url')
                 media_format = 'VIDEO'
@@ -465,12 +461,12 @@ def process_creator_profile(self, contact_id: str, profile_url: str):
             
             media_url = media_url.rstrip('.')
             
-            # Check video file size before processing
+            # Check video file size
             if media_format == 'VIDEO':
                 try:
                     head_response = requests.head(media_url, timeout=10)
                     content_length = int(head_response.headers.get('content-length', 0))
-                    max_size = 25 * 1024 * 1024  # 25MB in bytes
+                    max_size = 25 * 1024 * 1024
                     
                     if content_length > max_size:
                         print(f"Item {idx}: Video too large ({content_length / 1024 / 1024:.1f}MB), skipping")
@@ -479,10 +475,7 @@ def process_creator_profile(self, contact_id: str, profile_url: str):
                     print(f"Item {idx}: Could not check video size: {e}, attempting anyway")
             
             try:
-                # Re-host media on R2
                 rehosted_url = rehost_media_on_r2(media_url, contact_id, media_format)
-                
-                # Analyze content
                 analysis = analyze_content_item(rehosted_url, media_format)
                 analysis['description'] = item.get('description', '')
                 content_analyses.append(analysis)
@@ -498,21 +491,17 @@ def process_creator_profile(self, contact_id: str, profile_url: str):
                     print(f"Item {idx}: Analysis failed - {error_msg}")
                 continue
         
-        # Check if we have enough content to analyze
         if len(content_analyses) < 1:
             return {"status": "error", "message": "Could not analyze any content items"}
         
         print(f"Successfully analyzed {len(content_analyses)} items")
         
-        # Generate profile
         self.update_state(state='PROGRESS', meta={'stage': 'Generating creator profile'})
         creator_profile = generate_creator_profile(content_analyses)
         
-        # Generate score
         self.update_state(state='PROGRESS', meta={'stage': 'Calculating lead score'})
         lead_analysis = generate_lead_score(content_analyses, creator_profile)
         
-        # Send to HubSpot
         self.update_state(state='PROGRESS', meta={'stage': 'Sending to HubSpot'})
         send_to_hubspot(
             contact_id,
