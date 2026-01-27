@@ -679,10 +679,14 @@ def send_to_hubspot(contact_id: str, lead_score: float, section_scores: Dict, sc
 
 
 @celery_app.task(bind=True, name='tasks.process_creator_profile')
-def process_creator_profile(self, contact_id: str, profile_url: str):
+def process_creator_profile(self, contact_id: str, profile_url: str, bio: str = '', follower_count: int = 0):
     """Background task to process a creator profile with pre-screening"""
     try:
         print(f"=== PROCESSING: {contact_id} ===")
+        if bio:
+            print(f"Bio provided: {bio[:100]}...")
+        if follower_count:
+            print(f"Follower count: {follower_count:,}")
         
         # Step 1: Fetch content from InsightIQ
         self.update_state(state='PROGRESS', meta={'stage': 'Fetching content from InsightIQ'})
@@ -733,12 +737,12 @@ def process_creator_profile(self, contact_id: str, profile_url: str):
         # Step 4: Create profile snapshot
         self.update_state(state='PROGRESS', meta={'stage': 'Creating profile snapshot'})
         
-        # Extract profile data for snapshot
+        # Extract profile data for snapshot - use provided data first, fallback to InsightIQ
         profile_info = social_data.get('data', [{}])[0].get('profile', {})
         profile_data = {
             'username': profile_info.get('platform_username', 'Unknown'),
-            'bio': 'Bio not available in current API response',  # InsightIQ doesn't return bio in this endpoint
-            'follower_count': profile_info.get('follower_count', 'N/A'),
+            'bio': bio if bio else 'Bio not provided',
+            'follower_count': follower_count if follower_count else profile_info.get('follower_count', 'N/A'),
             'following_count': 'N/A',  # Not available in current response
             'image_url': profile_info.get('image_url', '')
         }
