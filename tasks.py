@@ -307,10 +307,10 @@ def check_for_travel_experience(bio: str, content_items: List[Dict[str, Any]]) -
     """
     # Keywords that indicate group travel hosting
     travel_keywords = [
-        'retreat', 'workshop', 'trip', 'tour', 'travel', 'getaway', 'adventure',
+        'retreat', 'workshop', 'trip', 'tour', 'getaway',
         'join me', 'join us', 'book now', 'spaces available', 'registration open',
-        'destination', 'experience', 'journey', 'expedition', 'immersion',
-        'hosted', 'hosting', 'leading', 'guiding'
+        'destination', 'experience', 'expedition', 'trips',
+        'hosted', 'hosting', 'group trip', 'group trips'
     ]
     
     # Check bio for travel indicators
@@ -594,7 +594,7 @@ def generate_lead_score(content_analyses: List[Dict[str, Any]], creator_profile:
             "role": "system",
             "content": """You score creators for TrovaTrip, a group travel platform where creators host trips with their communities.
 
-CRITICAL: A good fit is someone whose AUDIENCE wants to meet each other AND the host in real life. Examples: book clubs traveling to Ireland, widow communities on healing retreats, food bloggers doing culinary tours, wellness enthusiasts doing fitness / wellness retreats
+CRITICAL: A good fit is someone whose AUDIENCE wants to meet each other AND the host in real life. Examples include but are not limited to: book clubs traveling to Ireland, widow communities on healing retreats, food bloggers doing culinary tours, wellness enthusiasts doing fitness / wellness retreats
 
 BAD FITS to avoid:
 - Pure artists/performers with fan bases (not communities)
@@ -614,15 +614,15 @@ CONTENT: {combined}
 Score these 5 sections (0.0 to 1.0):
 
 1. **niche_and_audience_identity** (0.0-1.0)
-   HIGH scores (0.7-1.0): Clear lifestyle niche where audience shares identity (including but not limited to: widows, DINKs, book lovers, history nerds, foodies, wellness seekers). People want to connect with EACH OTHER in addition to the host.
-   LOW scores (0.0-0.4): Generic content, pure performance/art fans, religious-primary content, very technical/specialized, or unclear who the audience is.
+   HIGH scores (0.7-1.0): Clear lifestyle niche where audience shares identity (including but not limited to: widows, DINKs, book lovers, history nerds, foodies, wellness seekers). The host fosters a sense of community with their audience through their content. Content provides value to the audience (including but not limited to: education, community building, motivation).
+   LOW scores (0.0-0.4): Generic and/or transactional content that is not centered around a specific interest. Unclear who the intended audience is. Pure performance/art fans, religious-primary content, very technical/specialized.
 
 2. **host_likeability_and_content_style** (0.0-1.0)
    HIGH scores (0.7-1.0): Face-forward, appears regularly on camera, warm/conversational tone, shares experiences, content facilitates connection with audience through vulnerability and authenticity, genuine interest in knowing their audience and having their audience know them.
    LOW scores (0.0-0.4): Behind-the-camera content, aesthetic-only, formal/sterile tone, doesn't show personality, pure expertise without relatability.
 
 3. **monetization_and_business_mindset** (0.0-1.0)
-   HIGH scores (0.7-1.0): Already selling something (coaching, courses, products, Patreon, brand deals, services). Audience pays for access. Comfortable with sales/launches.
+   HIGH scores (0.7-1.0): Already selling something (coaching, courses, products, etc). Comfortable with monetizing their audience.
    LOW scores (0.0-0.4): No monetization, only donations, free content only, or explicitly states "no monetization."
 
 4. **community_infrastructure** (0.0-1.0)
