@@ -634,7 +634,7 @@ Score these 5 sections (0.0 to 1.0):
    LOW scores (0.0-0.4): No natural trip concept, very young/broke audience, content doesn't translate to group experiences, highly specialized/technical focus.
 
 Also provide:
-- **combined_lead_score**: Weighted average: (niche × 0.25) + (likeability × 0.20) + (monetization × 0.25) + (community × 0.15) + (trip_fit × 0.15)
+- **combined_lead_score**: Weighted average: (niche × 0.05) + (likeability × 0.4) + (monetization × 0.05) + (community × 0.3) + (trip_fit × 0.2)
 - **score_reasoning**: 2-3 sentences on fit for group travel with their community.
 
 RESPOND ONLY with JSON:
