@@ -307,10 +307,10 @@ def check_for_travel_experience(bio: str, content_items: List[Dict[str, Any]]) -
     """
     # Keywords that indicate group travel hosting
     travel_keywords = [
-        'retreat', 'workshop', 'trip', 'tour', 'getaway',
+        'retreat', 'workshop', 'trip', 'tour', 'travel', 'getaway',
         'join me', 'join us', 'book now', 'spaces available', 'registration open',
-        'destination', 'experience', 'expedition', 'trips',
-        'hosted', 'hosting', 'group trip', 'group trips'
+        'destination', 'journey', 'expedition',
+        'hosted', 'hosting', 'trips'
     ]
     
     # Check bio for travel indicators
@@ -560,19 +560,59 @@ def generate_creator_profile(content_analyses: List[Dict[str, Any]]) -> Dict[str
         model="gpt-4o",
         messages=[{
             "role": "system",
-            "content": "You analyze creators to profile their content strategy, audience engagement, and monetization."
+            "content": """You analyze creators to profile their content strategy, audience engagement, and monetization.
+
+Additionally, classify the creator into ONE primary category:
+- Empowerment: Personal development, coaching, motivation, empowerment
+- Entertainment: Performing arts, comedy, music, entertainment
+- Fitness & sport: Fitness, yoga, pilates, dance, sports (non-competitive focus)
+- Health & wellness: Mental health, wellness, spirituality, holistic health
+- Learning: Education, history, book clubs, teaching, academic content
+- Lifestyle: General lifestyle, fashion, beauty, home, parenting (non-family-travel)
+- Art & Design: Visual art, design, photography, creative arts
+- Exploration: Travel, adventure travel, cultural exploration
+- Food & Drink: Food, cooking, culinary, wine, restaurants, nutrition
+- Outdoor & Adventure: Hiking, camping, van life, outdoor activities
+
+Choose the SINGLE category that best represents the creator's primary content focus."""
         }, {
             "role": "user",
             "content": f"""Create structured creator profile covering: content category, content types, audience engagement, creator presence, monetization, community building.
 
 CONTENT: {combined}
 
-JSON format with those 6 fields as arrays/strings."""
+Return JSON with these fields:
+- content_category: Brief description of content themes
+- primary_category: ONE category from the list above (e.g., "Food & Drink", "Exploration", "Empowerment")
+- content_types: Types of content they create
+- audience_engagement: How they engage with audience
+- creator_presence: On-screen presence and personality
+- monetization: Evidence of monetization or business mindset
+- community_building: Community infrastructure and engagement
+
+Example format:
+{{
+  "content_category": "Wellness and mindfulness content",
+  "primary_category": "Health & wellness",
+  "content_types": "Educational videos, meditation guides",
+  "audience_engagement": "High engagement through comments",
+  "creator_presence": "Calm and authentic on-camera presence",
+  "monetization": "Offers paid courses and memberships",
+  "community_building": "Active Discord community and email list"
+}}"""
         }],
         response_format={"type": "json_object"}
     )
     
-    return json.loads(response.choices[0].message.content)
+    result = json.loads(response.choices[0].message.content)
+    
+    # Ensure primary_category is present (fallback to Lifestyle if not provided)
+    if 'primary_category' not in result:
+        result['primary_category'] = 'Lifestyle'
+        print("Warning: primary_category not provided by AI, defaulting to 'Lifestyle'")
+    
+    print(f"Creator Profile: {json.dumps(result, indent=2)}")
+    return result
 
 
 def generate_lead_score(content_analyses: List[Dict[str, Any]], creator_profile: Dict[str, Any]) -> Dict[str, Any]:
@@ -594,7 +634,7 @@ def generate_lead_score(content_analyses: List[Dict[str, Any]], creator_profile:
             "role": "system",
             "content": """You score creators for TrovaTrip, a group travel platform where creators host trips with their communities.
 
-CRITICAL: A good fit is someone whose AUDIENCE wants to meet each other AND the host in real life. Examples include but are not limited to: book clubs traveling to Ireland, widow communities on healing retreats, food bloggers doing culinary tours, wellness enthusiasts doing fitness / wellness retreats
+CRITICAL: A good fit is someone whose AUDIENCE wants to meet each other AND the host in real life. Examples: book clubs traveling to Ireland, widow communities on healing retreats, food bloggers doing culinary tours, wellness enthusiasts doing fitness / wellness retreats
 
 BAD FITS to avoid:
 - Pure artists/performers with fan bases (not communities)
@@ -737,6 +777,7 @@ def send_to_hubspot(contact_id: str, lead_score: float, section_scores: Dict, sc
         "score_trip_fit": section_scores.get('trip_fit_and_travelability', 0.0),
         "content_summary_structured": "\n\n".join(content_summaries),
         "profile_category": safe_str(creator_profile.get('content_category')),
+        "primary_category": safe_str(creator_profile.get('primary_category', 'Lifestyle')),
         "profile_content_types": safe_str(creator_profile.get('content_types')),
         "profile_engagement": safe_str(creator_profile.get('audience_engagement')),
         "profile_presence": safe_str(creator_profile.get('creator_presence')),
