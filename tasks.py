@@ -49,6 +49,82 @@ client = None
 if OPENAI_API_KEY:
     try:
         client = OpenAI(api_key=OPENAI_API_KEY)
+        print("OpenAI client initialized")
+    except Exception as e:
+        print(f"ERROR initializing OpenAI client: {e}")
+
+
+# Load category-specific examples for scoring
+CATEGORY_EXAMPLES = None
+
+def load_category_examples():
+    """Load category-specific good/bad fit examples"""
+    global CATEGORY_EXAMPLES
+    if CATEGORY_EXAMPLES is None:
+        examples_path = os.path.join(os.path.dirname(__file__), 'category_examples.json')
+        try:
+            with open(examples_path, 'r') as f:
+                CATEGORY_EXAMPLES = json.load(f)
+            print("✓ Category examples loaded")
+        except Exception as e:
+            print(f"⚠ Could not load category examples: {e}")
+            CATEGORY_EXAMPLES = {}
+    return CATEGORY_EXAMPLES
+
+
+def format_category_examples(category: str) -> str:
+    """Format category-specific examples for prompt inclusion"""
+    examples = load_category_examples()
+    
+    if category not in examples:
+        return ""
+    
+    cat_examples = examples[category]
+    good_fits = cat_examples.get('good_fits', [])
+    bad_fits = cat_examples.get('bad_fits', [])
+    
+    # Format good fit examples
+    good_text = f"\n{'='*70}\nGOOD FIT EXAMPLES for {category}:\n{'='*70}\n"
+    for idx, ex in enumerate(good_fits, 1):
+        good_text += f"\n{idx}. @{ex['handle']}"
+        if ex.get('niche'):
+            good_text += f" - {ex['niche']}"
+        if ex.get('why'):
+            # Clean up the "why" text
+            why_clean = ex['why'].replace('- ', '').strip()
+            good_text += f"\n   Why good fit: {why_clean}"
+        if ex.get('trip_concept'):
+            good_text += f"\n   Trip concept: {ex['trip_concept']}"
+        good_text += "\n"
+    
+    # Format bad fit examples
+    bad_text = f"\n{'='*70}\nBAD FIT EXAMPLES for {category}:\n{'='*70}\n"
+    for idx, ex in enumerate(bad_fits, 1):
+        bad_text += f"\n{idx}. @{ex['handle']}"
+        if ex.get('niche'):
+            bad_text += f" - {ex['niche']}"
+        if ex.get('why'):
+            # Clean up the "why" text
+            why_clean = ex['why'].replace('- ', '').strip()
+            bad_text += f"\n   Why bad fit: {why_clean}"
+        bad_text += "\n"
+    
+    # Add category-specific patterns
+    pattern_text = f"\n{'='*70}\nCRITICAL PATTERNS for {category}:\n{'='*70}\n"
+    pattern_text += "Based on these examples:\n"
+    pattern_text += "- Good fits show WHO the creator is (not just what they do)\n"
+    pattern_text += "- Good fits have audience wanting to connect with EACH OTHER\n"
+    pattern_text += "- Good fits mix expertise with personal/lifestyle content\n"
+    pattern_text += "- Good fits have community infrastructure (email/podcast/groups)\n"
+    pattern_text += "- Bad fits are transactional/promotional only\n"
+    pattern_text += "- Bad fits have fans (one-way admiration) not community (two-way connection)\n"
+    pattern_text += "- Bad fits don't show personality or vulnerability\n\n"
+    
+    return good_text + bad_text + pattern_text
+
+
+
+        client = OpenAI(api_key=OPENAI_API_KEY)
         print("OpenAI client initialized successfully")
     except Exception as e:
         print(f"ERROR initializing OpenAI client: {e}")
@@ -379,6 +455,16 @@ SUPPORTED ACTIVITIES (do NOT disqualify):
 - Learning (history, art, etc)
 - Professional coaches, personal coaches
 - Watersports as casual activity (not athlete/competitive focus)
+- Podcasts (ALWAYS pass to next stage - NEVER reject podcasts)
+
+CRITICAL: If a niche or activity is NOT listed in UNSUPPORTED ACTIVITIES or UNSUPPORTED PROFILE TYPES, DO NOT REJECT IT.
+Examples of niches to PASS TO NEXT STAGE (not in unsupported list):
+- Board games, card games, tabletop gaming
+- Crafts, knitting, sewing, DIY
+- Technology, coding, software
+- Business, entrepreneurship, marketing
+- Photography, videography
+- Any hobby or interest not explicitly listed as unsupported
 
 FAMILY TRAVEL CONTENT (disqualify):
 Only disqualify if the PRIMARY content focus is family/kids. Look for:
@@ -406,6 +492,8 @@ UNSUPPORTED PROFILE TYPES (disqualify if HIGH CONFIDENCE):
 PASS TO NEXT STAGE if:
 - Is not an UNSUPPORTED PROFILE TYPE and does not show any UNSUPPORTED ACTIVITIES
 - Personal creator sharing their expertise, lifestyle, or interests
+- Podcast creator (ALWAYS pass podcasts regardless of topic)
+- ANY niche or activity not explicitly listed in unsupported categories
 - ANY uncertainty about whether to disqualify (be permissive, not restrictive)
 
 CONTENT SELECTION (if passing to next stage):
@@ -616,12 +704,19 @@ Example format:
 
 
 def generate_lead_score(content_analyses: List[Dict[str, Any]], creator_profile: Dict[str, Any]) -> Dict[str, Any]:
-    """Generate TrovaTrip lead score based on ICP criteria - v1.1 (Production)"""
+    """Generate TrovaTrip lead score based on ICP criteria - v2.1 (Category-Specific Examples)"""
     summaries = [f"Content {idx} ({item['type']}): {item['summary']}" for idx, item in enumerate(content_analyses, 1)]
     combined = "\n\n".join(summaries)
     
+    # Get primary category for category-specific examples
+    primary_category = creator_profile.get('primary_category', 'Lifestyle')
+    
+    # Format category-specific examples
+    category_examples_text = format_category_examples(primary_category)
+    
     profile_context = f"""PROFILE:
 - Category: {creator_profile.get('content_category')}
+- Primary Category: {primary_category}
 - Types: {creator_profile.get('content_types')}
 - Engagement: {creator_profile.get('audience_engagement')}
 - Presence: {creator_profile.get('creator_presence')}
@@ -632,17 +727,32 @@ def generate_lead_score(content_analyses: List[Dict[str, Any]], creator_profile:
         model="gpt-4o",
         messages=[{
             "role": "system",
-            "content": """You score creators for TrovaTrip, a group travel platform where creators host trips with their communities.
+            "content": f"""You score creators for TrovaTrip, a group travel platform where creators host trips with their communities.
 
 CRITICAL: A good fit is someone whose AUDIENCE wants to meet each other AND the host in real life. Examples: book clubs traveling to Ireland, widow communities on healing retreats, food bloggers doing culinary tours, wellness enthusiasts doing fitness / wellness retreats
 
 BAD FITS to avoid:
 - Pure artists/performers with fan bases (not communities)
 - Very niche specialists where audience doesn't want group travel
-- Pastors / religious figures
+- Religious fundamentalists or creators with bigoted content (automatic low score)
+- Inclusive religious creators are acceptable if they build genuine community
 - Politicians
 - Creators who do only post transactional content (no invitation/CTA for audience to contribute/comment)
 - Creators without clear monetization (not business-minded)
+- Comedians who ONLY post clips from live shows, skits, and/or promotions for shows (heavily penalize in niche & trip_fit)
+- Musical artists who ONLY post songs and/or promotions for live shows (heavily penalize in niche & trip_fit)
+
+PERFORMER CONTENT PENALTY:
+If the creator is a comedian or musician who ONLY posts performance content (show clips, skits, songs, show promotions):
+- Score niche_and_audience_identity: 0.2-0.4 maximum (they have fans, not a community)
+- Score trip_fit_and_travelability: 0.1-0.3 maximum (audience wants shows, not travel together)
+- Reason: Their audience is passive consumers, not an engaged community that wants to connect with each other
+
+If the creator is a comedian/musician who ALSO posts lifestyle, behind-the-scenes, community building, or educational content:
+- Score normally based on community engagement
+- They can still score well if they build real community beyond performances
+
+{category_examples_text}
 
 SCORING CRITERIA (0.0-1.0 each):"""
         }, {
@@ -651,18 +761,22 @@ SCORING CRITERIA (0.0-1.0 each):"""
 
 CONTENT: {combined}
 
+Use the {primary_category} examples above to calibrate your scoring. Compare this profile to the GOOD FIT patterns and BAD FIT patterns shown.
+
 Score these 5 sections (0.0 to 1.0):
 
 1. **niche_and_audience_identity** (0.0-1.0)
-   HIGH scores (0.7-1.0): Clear lifestyle niche where audience shares identity (including but not limited to: widows, DINKs, book lovers, history nerds, foodies, wellness seekers). The host fosters a sense of community with their audience through their content. Content provides value to the audience (including but not limited to: education, community building, motivation).
-   LOW scores (0.0-0.4): Generic and/or transactional content that is not centered around a specific interest. Unclear who the intended audience is. Pure performance/art fans, religious-primary content, very technical/specialized.
+   HIGH scores (0.7-1.0): Clear lifestyle niche where audience shares identity (including but not limited to: widows, DINKs, book lovers, history nerds, foodies, wellness seekers). People want to connect with EACH OTHER in addition to the host.
+   LOW scores (0.0-0.4): Generic content, pure performance/art fans (comedians/musicians posting ONLY show content), religious-primary content, very technical/specialized, or unclear who the audience is.
+   
+   CRITICAL: Comedians/musicians who ONLY post performance content (show clips, skits, songs) should score 0.2-0.4 maximum. They have fans, not community.
 
 2. **host_likeability_and_content_style** (0.0-1.0)
    HIGH scores (0.7-1.0): Face-forward, appears regularly on camera, warm/conversational tone, shares experiences, content facilitates connection with audience through vulnerability and authenticity, genuine interest in knowing their audience and having their audience know them.
    LOW scores (0.0-0.4): Behind-the-camera content, aesthetic-only, formal/sterile tone, doesn't show personality, pure expertise without relatability.
 
 3. **monetization_and_business_mindset** (0.0-1.0)
-   HIGH scores (0.7-1.0): Already selling something (coaching, courses, products, etc). Comfortable with monetizing their audience.
+   HIGH scores (0.7-1.0): Already selling something (coaching, courses, products, Patreon, brand deals, services). Audience pays for access. Comfortable with sales/launches.
    LOW scores (0.0-0.4): No monetization, only donations, free content only, or explicitly states "no monetization."
 
 4. **community_infrastructure** (0.0-1.0)
@@ -672,10 +786,12 @@ Score these 5 sections (0.0 to 1.0):
 5. **trip_fit_and_travelability** (0.0-1.0)
    HIGH scores (0.7-1.0): Content naturally fits a trip (including but not limited to food/wine tours, history tours, retreats of any kind, adventure travel, cultural experiences). Audience has money/time for travel (including but not limited to professionals, DINKs, older audiences). Already travels or audience asks to travel together.
    LOW scores (0.0-0.4): No natural trip concept, very young/broke audience, content doesn't translate to group experiences, highly specialized/technical focus.
+   
+   CRITICAL: Comedians/musicians who ONLY post performance content should score 0.1-0.3 maximum. Their audience wants shows, not group travel experiences.
 
 Also provide:
-- **combined_lead_score**: Weighted average: (niche × 0.05) + (likeability × 0.4) + (monetization × 0.05) + (community × 0.3) + (trip_fit × 0.2)
-- **score_reasoning**: 2-3 sentences on fit for group travel with their community.
+- **combined_lead_score**: Weighted average: (niche × 0.25) + (likeability × 0.20) + (monetization × 0.25) + (community × 0.15) + (trip_fit × 0.15)
+- **score_reasoning**: 2-3 sentences on fit for group travel with their community. Reference similarities to GOOD FIT or BAD FIT examples if relevant.
 
 RESPOND ONLY with JSON:
 {{
