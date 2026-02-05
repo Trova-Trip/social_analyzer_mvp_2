@@ -1176,3 +1176,61 @@ def process_creator_profile(self, contact_id: str, profile_url: str, bio: str = 
             "contact_id": contact_id,
             "message": str(e)
         }
+
+
+@celery_app.task(name='rescore_single_profile', bind=True, max_retries=2)
+def rescore_single_profile(self, contact_id: str):
+    """
+    Re-score a single profile asynchronously (Celery background task)
+    """
+    try:
+        print(f"[RESCORE] Starting re-score for contact {contact_id}")
+        
+        # Load cached analysis from R2
+        cache_data = load_analysis_cache(contact_id)
+        
+        if not cache_data:
+            print(f"[RESCORE] No cached data found for {contact_id}")
+            return {
+                'status': 'error',
+                'contact_id': contact_id,
+                'reason': 'No cached analysis found'
+            }
+        
+        # Extract data
+        content_analyses = cache_data.get('content_analyses', [])
+        creator_profile = cache_data.get('creator_profile', {})
+        has_travel_experience = cache_data.get('has_travel_experience', False)
+        
+        # Re-score with V2.1 logic (category-specific examples)
+        lead_analysis = generate_lead_score(content_analyses, creator_profile)
+        
+        # Apply travel boost if applicable
+        if has_travel_experience and lead_analysis['lead_score'] < 0.50:
+            original_score = lead_analysis['lead_score']
+            lead_analysis['lead_score'] = 0.50
+            lead_analysis['score_reasoning'] = f"{lead_analysis.get('score_reasoning', '')} | TRAVEL EXPERIENCE BOOST (original: {original_score:.2f})"
+        
+        # Send updated score to HubSpot
+        send_to_hubspot(
+            contact_id=contact_id,
+            lead_score=lead_analysis['lead_score'],
+            section_scores=lead_analysis.get('section_scores', {}),
+            score_reasoning=lead_analysis.get('score_reasoning', ''),
+            creator_profile=creator_profile,
+            content_analyses=content_analyses
+        )
+        
+        print(f"[RESCORE] ✓ Successfully re-scored {contact_id}: {lead_analysis['lead_score']:.3f}")
+        
+        return {
+            'status': 'success',
+            'contact_id': contact_id,
+            'new_score': lead_analysis['lead_score']
+        }
+        
+    except Exception as e:
+        print(f"[RESCORE] Error re-scoring {contact_id}: {e}")
+        # Retry after 60 seconds
+        raise self.retry(exc=e, countdown=60, max_retries=2)
+

@@ -493,8 +493,9 @@ def rescore_profile(contact_id):
 @app.route('/rescore/batch', methods=['POST'])
 def rescore_batch():
     """
-    Re-score multiple profiles at once
+    Queue multiple profiles for async re-scoring
     Accepts: {"contact_ids": ["123", "456", "789"]}
+    Returns immediately with task info - processing happens in background
     """
     try:
         data = request.get_json()
@@ -503,61 +504,33 @@ def rescore_batch():
         if not contact_ids:
             return jsonify({"error": "contact_ids array is required"}), 400
         
-        print(f"=== BATCH RE-SCORING: {len(contact_ids)} profiles ===")
+        # Convert to strings
+        contact_ids = [str(cid) for cid in contact_ids]
         
-        results = []
-        errors = []
+        print(f"=== QUEUING BATCH RE-SCORE: {len(contact_ids)} profiles ===")
         
-        from tasks import load_analysis_cache, generate_lead_score, send_to_hubspot
+        # Import the Celery task
+        from tasks import rescore_single_profile
         
+        # Queue all profiles as async Celery tasks
+        task_ids = []
         for contact_id in contact_ids:
-            try:
-                # Load cache
-                cache_data = load_analysis_cache(contact_id)
-                content_analyses = cache_data.get('content_analyses', [])
-                creator_profile = cache_data.get('creator_profile', {})
-                has_travel_experience = cache_data.get('has_travel_experience', False)
-                
-                # Re-score
-                lead_analysis = generate_lead_score(content_analyses, creator_profile)
-                
-                # Apply travel boost
-                if has_travel_experience and lead_analysis['lead_score'] < 0.50:
-                    original_score = lead_analysis['lead_score']
-                    lead_analysis['lead_score'] = 0.50
-                    lead_analysis['score_reasoning'] = f"{lead_analysis.get('score_reasoning', '')} | TRAVEL EXPERIENCE BOOST (original: {original_score:.2f})"
-                
-                # Send to HubSpot
-                send_to_hubspot(
-                    contact_id,
-                    lead_analysis['lead_score'],
-                    lead_analysis.get('section_scores', {}),
-                    lead_analysis.get('score_reasoning', ''),
-                    creator_profile,
-                    content_analyses
-                )
-                
-                results.append({
-                    "contact_id": contact_id,
-                    "status": "success",
-                    "lead_score": lead_analysis['lead_score']
-                })
-                
-            except Exception as e:
-                errors.append({
-                    "contact_id": contact_id,
-                    "error": str(e)
-                })
+            task = rescore_single_profile.delay(contact_id)
+            task_ids.append(str(task.id))
         
-        print(f"=== BATCH COMPLETE: {len(results)} success, {len(errors)} errors ===")
+        print(f"=== QUEUED {len(task_ids)} RE-SCORE TASKS ===")
         
         return jsonify({
-            "status": "complete",
+            "status": "queued",
+            "message": f"Queued {len(contact_ids)} profiles for re-scoring",
             "total": len(contact_ids),
-            "success": len(results),
-            "errors": len(errors),
-            "results": results,
-            "error_details": errors
+            "task_ids_sample": task_ids[:10],  # First 10 for reference
+            "note": "Re-scoring is happening in background. Check Railway worker logs to monitor progress."
+        }), 202  # 202 Accepted
+        
+    except Exception as e:
+        print(f"Error queuing batch re-score: {e}")
+        return jsonify({"error": str(e)}), 500
         }), 200
         
     except Exception as e:
@@ -1061,3 +1034,4 @@ def health_check():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.getenv('PORT', 8080)))
+
