@@ -49,6 +49,82 @@ client = None
 if OPENAI_API_KEY:
     try:
         client = OpenAI(api_key=OPENAI_API_KEY)
+        print("OpenAI client initialized")
+    except Exception as e:
+        print(f"ERROR initializing OpenAI client: {e}")
+
+
+# Load category-specific examples for scoring
+CATEGORY_EXAMPLES = None
+
+def load_category_examples():
+    """Load category-specific good/bad fit examples"""
+    global CATEGORY_EXAMPLES
+    if CATEGORY_EXAMPLES is None:
+        examples_path = os.path.join(os.path.dirname(__file__), 'category_examples.json')
+        try:
+            with open(examples_path, 'r') as f:
+                CATEGORY_EXAMPLES = json.load(f)
+            print("✓ Category examples loaded")
+        except Exception as e:
+            print(f"⚠ Could not load category examples: {e}")
+            CATEGORY_EXAMPLES = {}
+    return CATEGORY_EXAMPLES
+
+
+def format_category_examples(category: str) -> str:
+    """Format category-specific examples for prompt inclusion"""
+    examples = load_category_examples()
+    
+    if category not in examples:
+        return ""
+    
+    cat_examples = examples[category]
+    good_fits = cat_examples.get('good_fits', [])
+    bad_fits = cat_examples.get('bad_fits', [])
+    
+    # Format good fit examples
+    good_text = f"\n{'='*70}\nGOOD FIT EXAMPLES for {category}:\n{'='*70}\n"
+    for idx, ex in enumerate(good_fits, 1):
+        good_text += f"\n{idx}. @{ex['handle']}"
+        if ex.get('niche'):
+            good_text += f" - {ex['niche']}"
+        if ex.get('why'):
+            # Clean up the "why" text
+            why_clean = ex['why'].replace('- ', '').strip()
+            good_text += f"\n   Why good fit: {why_clean}"
+        if ex.get('trip_concept'):
+            good_text += f"\n   Trip concept: {ex['trip_concept']}"
+        good_text += "\n"
+    
+    # Format bad fit examples
+    bad_text = f"\n{'='*70}\nBAD FIT EXAMPLES for {category}:\n{'='*70}\n"
+    for idx, ex in enumerate(bad_fits, 1):
+        bad_text += f"\n{idx}. @{ex['handle']}"
+        if ex.get('niche'):
+            bad_text += f" - {ex['niche']}"
+        if ex.get('why'):
+            # Clean up the "why" text
+            why_clean = ex['why'].replace('- ', '').strip()
+            bad_text += f"\n   Why bad fit: {why_clean}"
+        bad_text += "\n"
+    
+    # Add category-specific patterns
+    pattern_text = f"\n{'='*70}\nCRITICAL PATTERNS for {category}:\n{'='*70}\n"
+    pattern_text += "Based on these examples:\n"
+    pattern_text += "- Good fits show WHO the creator is (not just what they do)\n"
+    pattern_text += "- Good fits have audience wanting to connect with EACH OTHER\n"
+    pattern_text += "- Good fits mix expertise with personal/lifestyle content\n"
+    pattern_text += "- Good fits have community infrastructure (email/podcast/groups)\n"
+    pattern_text += "- Bad fits are transactional/promotional only\n"
+    pattern_text += "- Bad fits have fans (one-way admiration) not community (two-way connection)\n"
+    pattern_text += "- Bad fits don't show personality or vulnerability\n\n"
+    
+    return good_text + bad_text + pattern_text
+
+
+
+        client = OpenAI(api_key=OPENAI_API_KEY)
         print("OpenAI client initialized successfully")
     except Exception as e:
         print(f"ERROR initializing OpenAI client: {e}")
@@ -628,12 +704,19 @@ Example format:
 
 
 def generate_lead_score(content_analyses: List[Dict[str, Any]], creator_profile: Dict[str, Any]) -> Dict[str, Any]:
-    """Generate TrovaTrip lead score based on ICP criteria - v1.1 (Production)"""
+    """Generate TrovaTrip lead score based on ICP criteria - v2.1 (Category-Specific Examples)"""
     summaries = [f"Content {idx} ({item['type']}): {item['summary']}" for idx, item in enumerate(content_analyses, 1)]
     combined = "\n\n".join(summaries)
     
+    # Get primary category for category-specific examples
+    primary_category = creator_profile.get('primary_category', 'Lifestyle')
+    
+    # Format category-specific examples
+    category_examples_text = format_category_examples(primary_category)
+    
     profile_context = f"""PROFILE:
 - Category: {creator_profile.get('content_category')}
+- Primary Category: {primary_category}
 - Types: {creator_profile.get('content_types')}
 - Engagement: {creator_profile.get('audience_engagement')}
 - Presence: {creator_profile.get('creator_presence')}
@@ -644,14 +727,15 @@ def generate_lead_score(content_analyses: List[Dict[str, Any]], creator_profile:
         model="gpt-4o",
         messages=[{
             "role": "system",
-            "content": """You score creators for TrovaTrip, a group travel platform where creators host trips with their communities.
+            "content": f"""You score creators for TrovaTrip, a group travel platform where creators host trips with their communities.
 
 CRITICAL: A good fit is someone whose AUDIENCE wants to meet each other AND the host in real life. Examples: book clubs traveling to Ireland, widow communities on healing retreats, food bloggers doing culinary tours, wellness enthusiasts doing fitness / wellness retreats
 
 BAD FITS to avoid:
 - Pure artists/performers with fan bases (not communities)
 - Very niche specialists where audience doesn't want group travel
-- Pastors / religious figures
+- Religious fundamentalists or creators with bigoted content (automatic low score)
+- Inclusive religious creators are acceptable if they build genuine community
 - Politicians
 - Creators who do only post transactional content (no invitation/CTA for audience to contribute/comment)
 - Creators without clear monetization (not business-minded)
@@ -668,12 +752,16 @@ If the creator is a comedian/musician who ALSO posts lifestyle, behind-the-scene
 - Score normally based on community engagement
 - They can still score well if they build real community beyond performances
 
+{category_examples_text}
+
 SCORING CRITERIA (0.0-1.0 each):"""
         }, {
             "role": "user",
             "content": f"""{profile_context}
 
 CONTENT: {combined}
+
+Use the {primary_category} examples above to calibrate your scoring. Compare this profile to the GOOD FIT patterns and BAD FIT patterns shown.
 
 Score these 5 sections (0.0 to 1.0):
 
@@ -703,7 +791,7 @@ Score these 5 sections (0.0 to 1.0):
 
 Also provide:
 - **combined_lead_score**: Weighted average: (niche × 0.25) + (likeability × 0.20) + (monetization × 0.25) + (community × 0.15) + (trip_fit × 0.15)
-- **score_reasoning**: 2-3 sentences on fit for group travel with their community.
+- **score_reasoning**: 2-3 sentences on fit for group travel with their community. Reference similarities to GOOD FIT or BAD FIT examples if relevant.
 
 RESPOND ONLY with JSON:
 {{

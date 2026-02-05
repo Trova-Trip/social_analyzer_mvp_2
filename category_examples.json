@@ -1,0 +1,622 @@
+{
+    "Food & Drink": {
+      "good_fits": [
+        {
+          "handle": "morgandrinkscoffee",
+          "niche": "Craft coffee, coffee education & recipes",
+          "why": "- Consistently in front of camera in posts. High follower count and consistent engagement (likes and comments). Clearly defined niche. Content shows the creators journey in the coffee space, with personal touches (not just reviews and/or recipes). Can reach audience directly through email list.",
+          "trip_concept": "Coffee origin tour in Columbia",
+          "follower_count": 1200000,
+          "audience": "Coffee enthusiasts, home baristas, professional and/or competitive baristas",
+          "monetization": "Online store selling coffee gear/supplies",
+          "community": "Email list"
+        },
+        {
+          "handle": "www.instagram.com",
+          "niche": "Veganism, vegan food, vegan beauty, plant based recipes & lifestyle tips",
+          "why": "- Consistently in front of camera in posts. High follower count, mix of food & lifestyle/personal content (not just recipes/food). Audience can get to know creator through non food/recipe content. Can reach audience directly through email list. Cultivates engagement via podcast. Consistent engagement (likes and comments).",
+          "trip_concept": "vegan food tour in Thailand",
+          "follower_count": 523000,
+          "audience": "Vegans and people who follow plant based/meat free diets, nutrition enthusiasts, diet-conscious people",
+          "monetization": "Restaurant, branded merch, beauty line",
+          "community": "email list, podcast, online tv series"
+        },
+        {
+          "handle": "www.instagram.com",
+          "niche": "Asian food, food and culture, culinary critique & commentary",
+          "why": "- Consistently in front of camera in posts. High follower count and consistent engagement (likes and comments). Diverse content (recipes, food education, culinary commentary and critique). Content clearly shows the creator's POV/identity within the culinary niche, inviting those who resonate to connect. Connects with audience in person through cooking classes. Fosters community ties through Patreon.",
+          "trip_concept": "Food tour in China",
+          "follower_count": 125000,
+          "audience": "Culinary enthusiasts, home chefs, those interested in the intersection of food and culture",
+          "monetization": "Cookbooks, cooking classes, food events",
+          "community": "Patreon"
+        }
+      ],
+      "bad_fits": [
+        {
+          "handle": "theaptchef",
+          "niche": "Catering & private dining",
+          "why": "- Low category follower count. Almost all content appears to be promoting the creator's business. Content does not show authenticity or vulnerability. Content does not show \"who\" the creator is to facilitate connection. Content does not invite discourse or facilitate community. Creator is only in front of the camera in content that promotes their business.",
+          "trip_concept": "Food trip of some kind",
+          "follower_count": 45900,
+          "audience": "Catering/private dining clients, meal prep/pre-made food customers",
+          "monetization": "Catering, private dining, food sold by the plate",
+          "community": "none"
+        },
+        {
+          "handle": "showmetheyummy",
+          "niche": "Baking, food travel",
+          "why": "- Creator is rarely in content thumbnails. Poor engagement (likes and comments). Content is exclusively recipes.",
+          "trip_concept": "Baking or food-oriented trip",
+          "follower_count": 50000,
+          "audience": "Baking enthusiasts and home chefs",
+          "monetization": "Blog",
+          "community": "none"
+        },
+        {
+          "handle": "www.instagram.com",
+          "niche": "Recipes and recipe development",
+          "why": "- Creator is not in content thumbnails. Poor engagement (likes and comments). Content is exclusively food, does not show \"who\" the creator is or their POV within the culinary world. Does not demonstrate authenticity, personality, or vulnerability in content, making it difficult to connect with the creator. No attempt to foster community on Instagram or other platforms.",
+          "trip_concept": "Food trip of some kind",
+          "follower_count": 63600,
+          "audience": "Culinary enthusiasts, home chefs",
+          "monetization": "",
+          "community": "none"
+        }
+      ]
+    },
+    "Lifestyle": {
+      "good_fits": [
+        {
+          "handle": "www.instagram.com",
+          "niche": "Fashion, Mexican-American heritage, Beauty",
+          "why": "-Consistently in front of camera in content thumbnails. Narration shows authenticity and \"who\" the creator is. High follower count. Consistent engagement (likes and comments). Already monetizes audience. Focus on fashion and beauty attracts a specific audience with shared interests.",
+          "trip_concept": "Shopping trip to Italy",
+          "follower_count": 293000,
+          "audience": "Fashion enthusiasts, Mexican-Americans, women and moms, makeup enthusiasts",
+          "monetization": "Sells clothing, directly and via affiliate programs. Beauty services",
+          "community": "none"
+        },
+        {
+          "handle": "www.instagram.com",
+          "niche": "Petite fashion, beauty",
+          "why": "-Consistently in front of camera in content thumbnails. Mix of fashion-education content, lifestyle, and fashion inspiration attracts a specific community with shared interests while showing \"who\" the creator is and their POV. Consistent engagement (likes and comments)",
+          "trip_concept": "Girls culture/shopping trip to France",
+          "follower_count": 33800,
+          "audience": "Fashion and beauty enthusiasts",
+          "monetization": "Affiliate programs",
+          "community": "none"
+        },
+        {
+          "handle": "www.instagram.com",
+          "niche": "Female empowerment and connection, fashion and crafting, sobriety",
+          "why": "-High follower count. Consistesntly in front of camera in content thumbnails. Consistent engagement (likes and comments). Shows authenticity and vulnerability in content, inviting audience to get to know \"who\" the creator is. Already monetizing audience. Fosters intentional community through sover girls group chat.",
+          "trip_concept": "Sober girls trip to Thailand",
+          "follower_count": 503000,
+          "audience": "Women, fashion and crafting enthusiasts, sober people",
+          "monetization": "Retail location selling tie-dye merchandise, affiliate programs",
+          "community": "Podcast, sobriety girls group chat"
+        }
+      ],
+      "bad_fits": [
+        {
+          "handle": "jaspercolesays",
+          "niche": "difficult to discern",
+          "why": "-Content thumbnails are a strange mix of images that lack a cohesive aesthetic or theme. Content does not seem intentional or aimed at a specific audience. Unclear \"who\" the creator is based on what they share in content. Poor engagement (likes and comments).",
+          "trip_concept": "difficult to discern",
+          "follower_count": 164000,
+          "audience": "People in the enterainment industry",
+          "monetization": "none",
+          "community": "podcast."
+        },
+        {
+          "handle": "cornellsmith21",
+          "niche": "Food and entertainment/humor",
+          "why": "-Poor engagement (likes and comments). Bio indicates a focus on food, but content thumbnails and content lack a consistent culinary focus. Content lacks a clear POV and does not communicate \"who\" the creator is. Content is eye-catching, but does not facilitate discourse or creator-audience connection.",
+          "trip_concept": "Food trip of some kind",
+          "follower_count": 73100,
+          "audience": "Difficult to discern",
+          "monetization": "none",
+          "community": "none"
+        },
+        {
+          "handle": "maliaarrayah",
+          "niche": "Acting/modeling, body positivity, poetry.",
+          "why": "-Creator is consistently in front of camera in content thumbnails, but the majority of posts appear to be from modeling shoots. No \"candid\" content or conent that demonstrates vulnerability/authenticity. Varied monetization, but no attempt to foster community or connection. Profile appears to be focused on promoting the creator as an actor/model and generating revenue.",
+          "trip_concept": "Generic vacation",
+          "follower_count": 60600,
+          "audience": "People in the enterainment industry",
+          "monetization": "Cameo, affiliate programs, sells poetry books she has authored.",
+          "community": "none"
+        }
+      ]
+    },
+    "Exploration": {
+      "good_fits": [
+        {
+          "handle": "www.instagram.com",
+          "niche": "Solo female travel",
+          "why": "-High category follower count. Consistent engagement (likes and comments). Content thumbnails consistently show the creator in front of the camera. Content is focused on the creator's travels, but includes a mix of travel tips/education, recommendations, and candid moments that attract an audience with shared interests, then allows them to connect with/know \"who\" the creator is. Already monetizing audience.",
+          "trip_concept": "Girls trip to Morocco",
+          "follower_count": 255000,
+          "audience": "travel enthusiasts, female travelers, solo travelers",
+          "monetization": "Affiliate programs",
+          "community": "Goodreads"
+        },
+        {
+          "handle": "www.instagram.com",
+          "niche": "Group travel, female travel, travel planning",
+          "why": "-Very good engagement for audience size (likes and comments). Creator is consistently in content thumbnails. Content is focused on travel, but shows the creator's POV. Creator already does travel planning professionally, making them a natural fit.",
+          "trip_concept": "Girls trip to Egypt",
+          "follower_count": 11800,
+          "audience": "travel enthusiasts, female travelers, solo travelers",
+          "monetization": "Travel planning, affiliate programs",
+          "community": "none"
+        },
+        {
+          "handle": "www.instagram.com",
+          "niche": "RV enthusiasts",
+          "why": "-Profile bio says that girl_camper is \"The largest women's camping group in the country!\" This profile is a community, not a creator who has fostered one, making them an exceptional fit. Poor engagement on Instagram and being in front of the camera in content thumbnails are not important or necessary for \"community profiles\" because there is not a single person/creator who serves as the focal point for the community.",
+          "trip_concept": "Girls camper trip in Patagonia",
+          "follower_count": 39000,
+          "audience": "Female RV and camper owners, female RV enthusiasts",
+          "monetization": "Branded merchandise, affiliate",
+          "community": "Paid \"girl camper\" membership"
+        }
+      ],
+      "bad_fits": [
+        {
+          "handle": "jaythetravelguy",
+          "niche": "Travel advising",
+          "why": "-No photos of \"Jay the travel guy\" can be found on the profile. Most content thumbnails appear to be AI generated, not original content by the creator. Profile is solely to market/promote travel planning services.",
+          "trip_concept": "difficult to discern",
+          "follower_count": 22700,
+          "audience": "Potential clients",
+          "monetization": "Travel planning services",
+          "community": ""
+        },
+        {
+          "handle": "travelsbyalejandro",
+          "niche": "Travel advising",
+          "why": "-No photos of \"Alejandro\" can be found on the profile. Poor engagement (likes and comments). Profile is solely to marekt/promote travel planning services.",
+          "trip_concept": "difficult to discern",
+          "follower_count": 15600,
+          "audience": "Potential clients",
+          "monetization": "Travel planning services",
+          "community": ""
+        },
+        {
+          "handle": "wynnocvu",
+          "niche": "Female and solo travel",
+          "why": "-Profile is focused on travel and the creator is consistently in front of the camera in content thumbnails, but content lacks a clear \"POV\" or demonstrate \"who\" the creator is. Poor engagement (likes and comments) and relatively low audience count.",
+          "trip_concept": "Girls trip to Bali",
+          "follower_count": 19200,
+          "audience": "Female and solo travelers",
+          "monetization": "",
+          "community": ""
+        }
+      ]
+    },
+    "Entertainment": {
+      "good_fits": [
+        {
+          "handle": "realrileymitchell",
+          "niche": "\"Banter\", humor/entertainment",
+          "why": "-High follower count and consistent engagement (likes and comments). Creator is consistently in image thumbnails. Content primarily promotes their podcast, showing clips from podcast episodes. Together, this indicates that the creator has an engaged audience who enjoy longfrom podcast content and can visually connect with the creator via Instagram and podcast video recordings",
+          "trip_concept": "Lads trip to Bali",
+          "follower_count": 227000,
+          "audience": "Fans",
+          "monetization": "Cameo, affiliate programs.",
+          "community": "Podcast"
+        },
+        {
+          "handle": "themaggiehill",
+          "niche": "Pop culture",
+          "why": "-Consistent engagement (likes and comments), creator is consistently in front of the camera in image thumbnails and addressing the viewer directly. The creator focuses on pop-culture commentary, which showcases their POV and \"who\" they are.",
+          "trip_concept": "Girls theater trip to London",
+          "follower_count": 767000,
+          "audience": "pop culture fans",
+          "monetization": "",
+          "community": ""
+        },
+        {
+          "handle": "mrs.pearlmania500",
+          "niche": "Pop culture, home, literature, gardening",
+          "why": "-Consistent engagement (likes and comments), creator is consistently in front of the camera in image thumbnails and addressing the viewer directly. Content focuses on the creator's interests/hobbies, creating an audience with similar interests. The creator has a podcast, indicating an engaged community who enjoy longform content.",
+          "trip_concept": "Girls trip to Japan",
+          "follower_count": 33900,
+          "audience": "Pop culture fans, fans of the creator's perspective",
+          "monetization": "Affiliate programs",
+          "community": "Podcast"
+        }
+      ],
+      "bad_fits": [
+        {
+          "handle": "josh.brak",
+          "niche": "Comedy",
+          "why": "-Content is focused on the creator's standup comedy, showing a mix of clips from live sets and promotion for upcoming shows. Likes and comments are hidden on most posts. While the creator is often in front of the camera, the profile is solely focused on their comedy career, without any authentic or vulnerable insight on \"who\" the creator is",
+          "trip_concept": "Generic vacation",
+          "follower_count": 51900,
+          "audience": "comedy fans",
+          "monetization": "live shows, merchandise",
+          "community": "none"
+        },
+        {
+          "handle": "tguttagwilla",
+          "niche": "Music",
+          "why": "-The profile is focused on promoting the creator's music career and merchandise. Likes and comments are hidden on all posts. Content does not show any authenticity or vulnerability, or show \"who\" the creator is.",
+          "trip_concept": "difficult to discern",
+          "follower_count": 27200,
+          "audience": "fans",
+          "monetization": "Merchandise",
+          "community": "none"
+        },
+        {
+          "handle": "therealno3l",
+          "niche": "Music",
+          "why": "-The creator is frequently in front of the camera in content thumbnails, but the profile focuses on the creator's persona as a musician and does not offer any insight on \"who\" the creator actually is. Very low engagement despite large follower count.",
+          "trip_concept": "difficult to discern",
+          "follower_count": 195000,
+          "audience": "fans",
+          "monetization": "Merchandise",
+          "community": "none"
+        }
+      ]
+    },
+    "Learning": {
+      "good_fits": [
+        {
+          "handle": "www.instagram.com",
+          "niche": "Literature, female community",
+          "why": "-The creator is frequently in front of the camera in content thumbnails and shows consistent engagement (likes and comments). Content is focused on literature and showcases the creator's perspective/\"who\" they are within the literature niche. The creator further fosters a sense of community by branding her profile as the \"bookish girls club\"",
+          "trip_concept": "Girls literary trip to Ireland",
+          "follower_count": 65200,
+          "audience": "Female literature enthusiasts",
+          "monetization": "Merchandise",
+          "community": "Goodreads"
+        },
+        {
+          "handle": "www.instagram.com",
+          "niche": "Archaelogy, history, travel",
+          "why": "-The creator is often visible in content thumbnails and shows consistent engagement (likes and comments). Focus on historical content, which attracts an audience with similar interests. Bio includes \"75k on YouTube\", indicating an engaged audience who are interested in longfrom video content.",
+          "trip_concept": "History trip to Egypt",
+          "follower_count": 68200,
+          "audience": "History, archaelogy enthusiasts",
+          "monetization": "none",
+          "community": "Patreon"
+        },
+        {
+          "handle": "www.instagram.com",
+          "niche": "finance",
+          "why": "-The creator is frequently visible in content thumbnails and shows consistent engagement (likes and comments). Bio includes \"part-time world traveler\" showing an existing interest in travel. Content shows a healthy mix of financial education content and lifestyle content; this attracts an audience with an interest in financial literacy and allows them to connect with the creator through the authentic non-finance-related content.",
+          "trip_concept": "Girls retreat with finance coaching sessions/workshops",
+          "follower_count": 17900,
+          "audience": "Women interested in financial literacy",
+          "monetization": "affiliate, 1:1 coaching",
+          "community": "Email list/newsletter"
+        }
+      ],
+      "bad_fits": [
+        {
+          "handle": "www.instagram.com",
+          "niche": "finance, faith",
+          "why": "-Very poor engagement (likes and comments). Content is a mix of videos where the creator speaks to the camera while seated in an office chair with a white background and likely AI generated images featuring bible quotes. Profile lacks a cohesive \"brand\" or aesthetic, and the utter lack of engagement shows that their content is not well liked.",
+          "trip_concept": "difficult to discern",
+          "follower_count": 29400,
+          "audience": "financial professionals",
+          "monetization": "Business coaching",
+          "community": "none"
+        },
+        {
+          "handle": "www.instagram.com",
+          "niche": "Real estate",
+          "why": "-The creator is often visible in content thumbnails, but likes and comments are hidden on all posts. The content is focused on the creator's real estate career and the creator's professional persona, not an authentic or vulnerable view of \"who\" the creator is.",
+          "trip_concept": "Professional retreat",
+          "follower_count": 39000,
+          "audience": "Real estate professionals, potential clients",
+          "monetization": "Home evaluation",
+          "community": "none"
+        },
+        {
+          "handle": "www.instagram.com",
+          "niche": "Anatomy and Physiology",
+          "why": "-The creator has a high follower count, great engagement, and is consistently in front of the camera in image thumbnails, addressing the audience. However, the content is solely focused on anatomy and physiology education. The creator does not offer any insight on \"who\" they are through their content, other than an educator. There is little reason that their audience would want to connect with the creator in real life and the intense focus on anatomy and physiology does not translate into a group travel experience.",
+          "trip_concept": "difficult to discern",
+          "follower_count": 563000,
+          "audience": "Medical students, medical professionals, those interested in anatomy and physiology",
+          "monetization": "online courses",
+          "community": "none"
+        }
+      ]
+    },
+    "Art & Design": {
+      "good_fits": [
+        {
+          "handle": "www.instagram.com",
+          "niche": "Knitting, textile art",
+          "why": "-The creator shows consistent enagement (likes and comments). Content focuses on knitting, attracting an audience with a shared interest. The creator fosters additional engagement through \"knit alongs\" and inviting her audience to help with new patterns as \"test knitters\". Most notably, the creator has cultivated a more intimate community through Discord.",
+          "trip_concept": "Knitting trip to Scotland",
+          "follower_count": 53400,
+          "audience": "creatives, crafters",
+          "monetization": "Sells knitting patterns",
+          "community": "Discord group"
+        },
+        {
+          "handle": "www.instagram.com",
+          "niche": "Drawing, art, art education",
+          "why": "-The creator shows strong engagement (likes and comments) with content focused on illustration with colored pencils. While the creator is not frequently visible on content thumbnails, their bio includes \"Learn to draw with me in-person and online\" which indicates an engaged community of creatives that learn from the creator. The creator has cultivated a more intimate community on Patreon",
+          "trip_concept": "Art retreat to France",
+          "follower_count": 22300,
+          "audience": "Creatives, illustrators",
+          "monetization": "Pet portrait commissions, art classes",
+          "community": "Patreon"
+        },
+        {
+          "handle": "www.instagram.com",
+          "niche": "Art, design, creative inspiration",
+          "why": "-The creator invites people to join her email list in her bio, indicating an active email list that can be used for marketing. The creator shows strong engagement (likes and comments). While they are not in front of the camera often in content thumbnails, one post shows an in-person art class - this demonstrates an engaged community that already meets in person, making the creator a natural fit.",
+          "trip_concept": "Art retreat to Italy",
+          "follower_count": 132000,
+          "audience": "Creatives, artists",
+          "monetization": "Online and in person art classes",
+          "community": "Email list, in person art classes"
+        }
+      ],
+      "bad_fits": [
+        {
+          "handle": "kotostagram213",
+          "niche": "Art",
+          "why": "-The owner of the profile is totally unknown. Content is exclusively their illustrations. Since it is unknown who the creator is, nobody would want to travel with them.",
+          "trip_concept": "difficult to discern",
+          "follower_count": 29000,
+          "audience": "Creatives",
+          "monetization": "none",
+          "community": "none"
+        },
+        {
+          "handle": "wishpetal",
+          "niche": "Art, character design, webcomics",
+          "why": "-The owner of the profile is unknown. Content is exclusively their illustrations. Engagement (likes and comments) is good and the profile bio references a Patreon, but the creator/artist is completely absent from the profile, making them a poor fit.",
+          "trip_concept": "difficult to discern",
+          "follower_count": 85300,
+          "audience": "Creatives, webcomic fans",
+          "monetization": "none",
+          "community": "Patreon"
+        },
+        {
+          "handle": "blushyspicy",
+          "niche": "Character design, digital illustration",
+          "why": "-The profile shows strong engagement (likes and comments), but the owner of the profile is unknown. The majority of the illustrations posted depict women in revealing clothing and/or compromising positions, indicating a brand liability.",
+          "trip_concept": "Difficult to discern",
+          "follower_count": 177000,
+          "audience": "Creatives, illustrators",
+          "monetization": "Sells stickers",
+          "community": "Patreon"
+        }
+      ]
+    },
+    "Fitness & Sport": {
+      "good_fits": [
+        {
+          "handle": "bonschro",
+          "niche": "Weightlifting, fitness coaching, mindset coaching",
+          "why": "-The creator is often in front of the camera in content thumbnails. Shows consistent engagement (likes and comments). Bio includes \"online coach\" indicating that they are already monetizing their audience and likely have a more intimate community of clients. The content is focused on physical and mental wellbeing, attracting an audience with shared interests. A mix of educational and personal/lifestyle content shows \"who\" the creator is and demonstrates vulnerability/authenticity that the audience can identify with.",
+          "trip_concept": "Womens fitness retreat in Costa Rica",
+          "follower_count": 190000,
+          "audience": "fintess enthusiasts, individuals interested in bettering their physical and mental wellbeing",
+          "monetization": "online coaching, in person coaching",
+          "community": "Private mindset/mental health group online"
+        },
+        {
+          "handle": "wandering.weights",
+          "niche": "Fitness, travel, van life",
+          "why": "-The creator is often in front of the camera in content thumbnails and shows consistent engagement (likes and comments). Their content is a mix of fitness and travel content, attracting an audience with shared interests. The creator shows authenticity & vulnerability through their content, allowing the audience to see \"who\" they are. The profile's partial focus on travel translates well into a group travel experience, making them a natural fit.",
+          "trip_concept": "Fitness retreat to Patagonia",
+          "follower_count": 100000,
+          "audience": "Fitness & travel enthusiasts",
+          "monetization": "1:1 coaching and online programs",
+          "community": "private online community"
+        },
+        {
+          "handle": "www.instagram.com",
+          "niche": "Fitness for women aged 35+",
+          "why": "-The creator is frequently in front of the camera in content thumbnails, addressing the camera. While engagement is varied, likes and comments are not hidden. Most importantly, the creator has a very well defined niche (fitness for women over the age of 35), indicating a specific audience/community. The creator further fosters community by branding them as \"the wolfpack\" and creating a private online community for them.",
+          "trip_concept": "Womens fitness retreat in Costa RIca",
+          "follower_count": 34400,
+          "audience": "Women aged 35+ who are interested in fitness",
+          "monetization": "Coaching and programs",
+          "community": "private online community"
+        }
+      ],
+      "bad_fits": [
+        {
+          "handle": "ifbbpro_jstranddd",
+          "niche": "Bodybuilding",
+          "why": "-The creator is often in front of the camera in content thumbnails, but the content is solely focused on the creator's bodybuilding career and shows their professional/fitness persona. While their audience may be inspired or educated by their content, they would have little reason to travel with the creator.",
+          "trip_concept": "Mens fitness retreat",
+          "follower_count": 13600,
+          "audience": "bodybuilding fans and bodybuilders",
+          "monetization": "Coaching and programs",
+          "community": "none"
+        },
+        {
+          "handle": "tygafitness",
+          "niche": "Weightlifting",
+          "why": "-The content thumbnails show primarily clips of the creator in the gym, but the content does not convey \"who\" the creator is. Likes and comments are hidden on all posts. All generic fitness content. No reason for the audience to want to connect with the creator in real life.",
+          "trip_concept": "Mens fitness retreat",
+          "follower_count": 24700,
+          "audience": "Fitness enthusiasts",
+          "monetization": "affiliate programs",
+          "community": "none"
+        }
+      ]
+    },
+    "Empowerment": {
+      "good_fits": [
+        {
+          "handle": "www.instagram.com",
+          "niche": "Travel, independence, self-trust",
+          "why": "-Creator is frequently in content thumbnails and addresses her audience directly; content thumbnails include visible text such as \"Hey I'm Lauren\" or \"hey girl\". Content shows a mix of travel content and posts where the creator shows vulnerability and authenticity by shares her own experiences/journey towards independence, inviting discourse and allowing her audience to see \"who\" she is.",
+          "trip_concept": "Womens wellness retreat in Croatia",
+          "follower_count": 104000,
+          "audience": "Women seeking empowerment, independence, and new experiences through community",
+          "monetization": "none",
+          "community": "none"
+        },
+        {
+          "handle": "michaelandmatt",
+          "niche": "LGBTQIA travel, body positivity",
+          "why": "-High follower count and great engagement (likes and comments). Content thumbnails consistently show the creators (Michael and Matt) in front of the camera. The profile has a very well defined niche (LGBTQIA travel) that is shown in their content. Monetization, community, and content focused on travel make them an exceptional fit.",
+          "trip_concept": "LGBTQIA getaway to Greece",
+          "follower_count": 451000,
+          "audience": "Travel enthusiasts in the LGBTQIA community",
+          "monetization": "LGBTQIA travel company",
+          "community": "private LGBTQIA travel facebook group"
+        },
+        {
+          "handle": "www.instagram.com",
+          "niche": "Community and empowerment for latina women",
+          "why": "-The profile has \"Community\", \"in person & virtual events\" in the bio, indicating that the profile is for a community, not a specific creator. The content thumbnails show upcoming in person/virtual events, as well as photos from past in person events. The bio and content show a strong community that already meets in person, making them an exceptional fit.",
+          "trip_concept": "womens trip to Mexico",
+          "follower_count": 54600,
+          "audience": "Latina women",
+          "monetization": "none",
+          "community": "in person and online events"
+        }
+      ],
+      "bad_fits": [
+        {
+          "handle": "www.instagram.com",
+          "niche": "Leadership skills and coaching",
+          "why": "-Likes and comments hidden on all posts. The creator is often visible in front of the camera in content thumbnails, but alongside visible text that frames the creator as the instructor and the audience as the student such as \"Stop using these 3 words\", \"Let them, or tell them\", and \"Don't cut people off. Raise your standards.\" The content showscases the creator's knowledge/expertise as a business leader, but does not show \"who\" they are, beyond a business educator. Together, this frames the creator and their audience as a teacher and their students, not a community.",
+          "trip_concept": "business retreat to Mexico",
+          "follower_count": 51200,
+          "audience": "Business leaders/potential clients",
+          "monetization": "Online courses and coaching",
+          "community": "none"
+        },
+        {
+          "handle": "iamjazminesmith",
+          "niche": "Trauma recovery, financial empowerment",
+          "why": "-Low follower count and low engagement (likes and comments). Phrases in the profile bio like \"truth teller\", \"mentor\", \"bridge builder and hope dealer\", and \"trauma informed\" indicate that the profile is broadly in the empowerment category, but do not point to a well defined niche. The creator is frequently in front of the camera in thumbnail images, which show a mix of professional portraits and clips from in-person seminars, indicating that the creator uses their instagram to funnel people to seminars as a revenue stream. The lack of community development outside of these webinars indicate a transactional focus, not a community focus.",
+          "trip_concept": "wellness retreat in Bali",
+          "follower_count": 17200,
+          "audience": "Those interested in empowering themselves by processing their trauma",
+          "monetization": "coaching",
+          "community": "none"
+        }
+      ]
+    },
+    "Health & Wellness": {
+      "good_fits": [
+        {
+          "handle": "www.instagram.com",
+          "niche": "Strength and mobility for aging women",
+          "why": "-The creator is frequently visible in content thumbnails, which are focused on wellness - such as stretching and pilates - but also show lifestyle moments, providing the audience with snapshots of \"who\" the creator is. The creator has a very well defined niche, attracting a specific audience. The bio \"ATL + virtual\" and content show that the creator leads in-person & online classes, showing that the audience already connects in person.",
+          "trip_concept": "wellness retreat in Bali",
+          "follower_count": 89300,
+          "audience": "Health conscious aging women",
+          "monetization": "virtual and in person classes",
+          "community": "none"
+        },
+        {
+          "handle": "www.instagram.com",
+          "niche": "Astrology",
+          "why": "-The creator is frequently visible in content thumbnails, addressing the audience. Consistent engagement (likes and comments). Content consists primarily of horoscopes and related content, which naturally prompts audience discourse. The bio includes \"star of @magicmondaypod\", indicating an engaged audience who enjoy longform podcast content from the creator.",
+          "trip_concept": "Astrology retreat in Morocco",
+          "follower_count": 65700,
+          "audience": "Astrologers",
+          "monetization": "personal readings, affiliate programs",
+          "community": "podcast"
+        },
+        {
+          "handle": "www.instagram.com",
+          "niche": "Yoga, pilates, wellness",
+          "why": "-The creator is consistently visible in content thumbnails, which advertize upcoming in person yoga classes and show clips of in-person gatherings. The bio includes \"Yoga strength Ebook\" and \"Youtube classes\" showing that the creator has a lead catcher (Ebook) and an engaged community that enjoy longfrom youtube content. Most importantly the content shows that the creator's community already connects in real life, making them a natural fit.",
+          "trip_concept": "Yoga retreat in Thailand",
+          "follower_count": 79900,
+          "audience": "wellness enthusiasts",
+          "monetization": "In person yoga classes, affiliate",
+          "community": "email list, private \"inner circle\" online community"
+        }
+      ],
+      "bad_fits": [
+        {
+          "handle": "www.instagram.com",
+          "niche": "Christianity",
+          "why": "-Text visible in several content thumbnails such as \"Spiritualist gets miraculously healed\", \"Witchcraft exposed\", and \"I met a they/them who wanted to die, but love spoke louder.\" show fundamentalist and bigoted views that are not supported on the TrovaTrip platform.",
+          "trip_concept": "Religious retreat",
+          "follower_count": 594000,
+          "audience": "Christians",
+          "monetization": "none",
+          "community": "Telegram group, church group"
+        },
+        {
+          "handle": "www.instagram.com",
+          "niche": "Nursing",
+          "why": "-The profile bio only contains \"RN, BOARD CERTIFIED-FNP\" indicating that the profile broadly fits into the health & wellness category, but the content thumbnails exclusively show selfies of the creator taken in scrubs. Neither the content nor the captions demonstrate authenticity/vulnrability or share anything about \"who\" the creator is. The majority of their followers are likely people who find the creator attractive, not any kind of community.",
+          "trip_concept": "Generic vacation",
+          "follower_count": 43700,
+          "audience": "Medical professionals",
+          "monetization": "affiliate programs",
+          "community": "none"
+        }
+      ]
+    },
+    "Outdoor & Adventure": {
+      "good_fits": [
+        {
+          "handle": "www.instagram.com",
+          "niche": "Hiking, outdoor adventure",
+          "why": "-The profile bio contains \"I'm a gatherer. I plan the adventure, you show up. Lets be friends\" which shows the creator already plans in person group experiences and has an espoused interest in being friends with her audience. Content thumbnails focus on these in person experiences, both advertizing upcoming ones and showing clips from past ones, showing that the creator has an engaged community that already connects in real life. This makes them a natural fit.",
+          "trip_concept": "Outdoor trip to Patagonia",
+          "follower_count": 23100,
+          "audience": "Female outdoor enthusiasts",
+          "monetization": "Has a clothing brand, leads in person outdoor experiences in Utah",
+          "community": "Leads in person outdoor experiences in Utah"
+        },
+        {
+          "handle": "www.instagram.com",
+          "niche": "Hiking, outdoor adventure",
+          "why": "-The creator is frequently visible in content thumbnails, which are focused on the creator's experiences thru-hiking. Strong engagement (likes and comments). Content shows a mix of outdoors content (hikes), educational content, and lifestyle moments. The consistent theme attracts an audience with similar interests and the personal/lifestyle moments show \"who\" the creator is, increasing relatability.",
+          "trip_concept": "Girls hiking trip in Nepal",
+          "follower_count": 84300,
+          "audience": "Female outdoor enthusiasts",
+          "monetization": "none",
+          "community": "none"
+        },
+        {
+          "handle": "www.instagram.com",
+          "niche": "Outdoor adventure",
+          "why": "-The creator is frequently visible in content thumbnails and text in the thumbnails show a mix of outdoor and lifestyle content that provide a good sense of \"who\" the creator is. For instance, outdoor-focused posts include \"Ski touring as a beginner\" and lifestyle posts include \"spend the day with me\". Rather than just documenting their outdoor adventures/life, these posts invite the audience to follow along, enhancing community. Strong engagement (likes and comments)",
+          "trip_concept": "Girls outdoor trip in Alaska",
+          "follower_count": 10900,
+          "audience": "Female outdoor enthusiasts",
+          "monetization": "Affiliate",
+          "community": "none"
+        }
+      ],
+      "bad_fits": [
+        {
+          "handle": "www.instagram.com",
+          "niche": "Outdoor photography, foraging",
+          "why": "-The creator is rarely visible in content thumbnails. Instead, the creator's photos make up the majority of the content. While engagement (likes and comments) is good, the creator is largely absent - the audience does not know \"who\" they are or connect with them, rather the audience is engaging with the creator's work/photograpy. This indicates an audience who appreciates the creator's work, but is not well acquainted with the creator and has little reason to travel together.",
+          "trip_concept": "Outdoor photography trip in Peru",
+          "follower_count": 40100,
+          "audience": "Artists, photographers",
+          "monetization": "none",
+          "community": "none"
+        },
+        {
+          "handle": "www.instagram.com",
+          "niche": "Underwater photography, wildlife photography",
+          "why": "-Despite consistent engagement (likes and comments) the creator is rarely visible in content thumbnails. Instead, thumbnails show underwater scenes with visible text such as \"The best action camera\" and \"sound on for adorable baby manatee squeaks\". Content focuses on the animals the creator photographs. The audience clearly appreciates the creator's work, but it is unclear \"who\" the creator is and the content does not indicate an effort to cultivate community or discourse with their audience.",
+          "trip_concept": "Underwater photography trip to the Galapagos",
+          "follower_count": 80400,
+          "audience": "wildlife photographers",
+          "monetization": "Sells photo prints, affiliate",
+          "community": "none"
+        }
+      ]
+    }
+  }
