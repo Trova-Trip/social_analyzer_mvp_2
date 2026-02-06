@@ -1290,7 +1290,7 @@ RESPOND ONLY with JSON (no preamble):
     engagement_adjustment = max(-0.20, min(0.20, engagement_adjustment))  # Cap at ±0.20
     
     # Entertainment category penalty (ALL profiles)
-    category_penalty = -0.05 if primary_category == "Entertainment" else 0.0
+    category_penalty = -0.1 if primary_category == "Entertainment" else 0.0
     
     # Calculate final score
     final_score = base_score + follower_boost + engagement_adjustment + category_penalty
