@@ -696,6 +696,65 @@ Example format:
     return result
 
 
+def calculate_engagement_penalties(content_analyses: List[Dict]) -> Dict[str, float]:
+    """
+    Calculate engagement-based penalties from content analyses
+    
+    Penalizes profiles for:
+    1. Posts with hidden engagement (likes_and_views_disabled: true)
+    2. Posts with low engagement (<150 likes AND <10 comments)
+    
+    Excludes pinned posts from analysis.
+    
+    Returns:
+        {
+            'hidden_engagement_penalty': float,
+            'low_engagement_penalty': float,
+            'hidden_count': int,
+            'low_engagement_count': int,
+            'total_penalty': float
+        }
+    """
+    hidden_engagement_posts = []
+    low_engagement_posts = []
+    
+    for post in content_analyses:
+        # Skip pinned posts (evergreen content)
+        if post.get('is_pinned', False):
+            continue
+        
+        # Check for hidden engagement
+        if post.get('likes_and_views_disabled', False):
+            hidden_engagement_posts.append(post)
+            continue  # Don't double-count
+        
+        # Check for low engagement (only if engagement is visible)
+        engagement = post.get('engagement', {})
+        like_count = engagement.get('like_count', 0) or 0  # Handle None
+        comment_count = engagement.get('comment_count', 0) or 0  # Handle None
+        
+        # Both conditions must be true for penalty
+        if like_count < 150 and comment_count < 10:
+            low_engagement_posts.append(post)
+    
+    # Calculate penalties with caps
+    hidden_penalty = len(hidden_engagement_posts) * 0.05
+    hidden_penalty = min(hidden_penalty, 0.15)  # Cap at 3 posts
+    
+    low_engagement_penalty = len(low_engagement_posts) * 0.03
+    low_engagement_penalty = min(low_engagement_penalty, 0.15)  # Cap at 5 posts
+    
+    total_penalty = min(hidden_penalty + low_engagement_penalty, 0.20)  # Overall cap
+    
+    return {
+        'hidden_engagement_penalty': hidden_penalty,
+        'low_engagement_penalty': low_engagement_penalty,
+        'hidden_count': len(hidden_engagement_posts),
+        'low_engagement_count': len(low_engagement_posts),
+        'total_penalty': total_penalty
+    }
+
+
 def generate_lead_score(content_analyses: List[Dict[str, Any]], creator_profile: Dict[str, Any]) -> Dict[str, Any]:
     """Generate TrovaTrip lead score based on ICP criteria - v2.1 (Category-Specific Examples)"""
     summaries = [f"Content {idx} ({item['type']}): {item['summary']}" for idx, item in enumerate(content_analyses, 1)]
@@ -803,19 +862,60 @@ RESPOND ONLY with JSON:
     result = json.loads(response.choices[0].message.content)
     print(f"GPT Lead Score Response: {json.dumps(result, indent=2)}")
     
-    # Extract section scores
+    # Calculate engagement penalties
+    engagement_penalties = calculate_engagement_penalties(content_analyses)
+    
+    # Extract section scores from GPT
+    niche_and_audience_score = result.get('niche_and_audience_identity', 0.0)
+    host_likeability_score = result.get('host_likeability_and_content_style', 0.0)
+    monetization_score = result.get('monetization_and_business_mindset', 0.0)
+    community_infrastructure_score = result.get('community_infrastructure', 0.0)
+    trip_fit_score = result.get('trip_fit_and_travelability', 0.0)
+    
+    # Apply engagement penalties to niche & audience score
+    if engagement_penalties['total_penalty'] > 0:
+        original_niche_score = niche_and_audience_score
+        niche_and_audience_score = max(0.0, niche_and_audience_score - engagement_penalties['total_penalty'])
+        
+        print(f"  Engagement penalties applied: -{engagement_penalties['total_penalty']:.3f}")
+        print(f"    Hidden engagement posts: {engagement_penalties['hidden_count']} (-{engagement_penalties['hidden_engagement_penalty']:.3f})")
+        print(f"    Low engagement posts: {engagement_penalties['low_engagement_count']} (-{engagement_penalties['low_engagement_penalty']:.3f})")
+        print(f"    Niche & Audience Score: {original_niche_score:.3f} → {niche_and_audience_score:.3f}")
+    
+    # Build section scores dict with penalized niche score
     section_scores = {
-        "niche_and_audience_identity": result.get('niche_and_audience_identity', 0.0),
-        "host_likeability_and_content_style": result.get('host_likeability_and_content_style', 0.0),
-        "monetization_and_business_mindset": result.get('monetization_and_business_mindset', 0.0),
-        "community_infrastructure": result.get('community_infrastructure', 0.0),
-        "trip_fit_and_travelability": result.get('trip_fit_and_travelability', 0.0)
+        "niche_and_audience_identity": niche_and_audience_score,
+        "host_likeability_and_content_style": host_likeability_score,
+        "monetization_and_business_mindset": monetization_score,
+        "community_infrastructure": community_infrastructure_score,
+        "trip_fit_and_travelability": trip_fit_score
     }
+    
+    # Calculate combined score using UPDATED weights (V2.1)
+    combined_lead_score = (
+        (niche_and_audience_score * 0.30) +        # Updated from 0.25
+        (host_likeability_score * 0.25) +          # Updated from 0.20
+        (monetization_score * 0.25) +              # Same
+        (community_infrastructure_score * 0.10) +  # Updated from 0.15
+        (trip_fit_score * 0.10)                    # Updated from 0.15
+    )
+    
+    # Update score reasoning to mention penalties if applied
+    score_reasoning = result.get('score_reasoning', '')
+    if engagement_penalties['total_penalty'] > 0:
+        penalty_details = []
+        if engagement_penalties['hidden_count'] > 0:
+            penalty_details.append(f"{engagement_penalties['hidden_count']} hidden engagement posts")
+        if engagement_penalties['low_engagement_count'] > 0:
+            penalty_details.append(f"{engagement_penalties['low_engagement_count']} low engagement posts")
+        
+        penalty_note = f" | ENGAGEMENT PENALTIES: {', '.join(penalty_details)} (-{engagement_penalties['total_penalty']:.3f})"
+        score_reasoning = score_reasoning + penalty_note
     
     return {
         "section_scores": section_scores,
-        "lead_score": result.get('combined_lead_score', 0.0),
-        "score_reasoning": result.get('score_reasoning', '')
+        "lead_score": combined_lead_score,
+        "score_reasoning": score_reasoning
     }
 
 
