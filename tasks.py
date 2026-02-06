@@ -1447,6 +1447,13 @@ def send_to_hubspot(contact_id: str, lead_score: float, section_scores: Dict, sc
 @celery_app.task(bind=True, name='tasks.process_creator_profile')
 def process_creator_profile(self, contact_id: str, profile_url: str, bio: str = '', follower_count: int = 0):
     """Background task to process a creator profile with pre-screening"""
+    import time
+    import random
+    
+    # Stagger processing to avoid OpenAI TPM bursts (V3.0 uses ~12K tokens per profile)
+    # With 2 workers, this prevents both hitting API simultaneously
+    time.sleep(random.uniform(1, 3))
+    
     try:
         print(f"=== PROCESSING: {contact_id} ===")
         if bio:
