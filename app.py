@@ -644,13 +644,14 @@ def check_task_status(task_id):
 
 @app.route('/')
 def dashboard():
-    """Simple dashboard showing queue status and processing stats"""
+    """Main dashboard page with batch quality metrics"""
     return '''
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>TrovaTrip Enrichment Dashboard</title>
+    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TrovaTrip Enrichment Dashboard</title>
     <style>
         * {
             margin: 0;
@@ -659,157 +660,171 @@ def dashboard():
         }
         
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
             padding: 20px;
         }
         
         .container {
-            max-width: 1200px;
+            max-width: 1400px;
             margin: 0 auto;
         }
         
         .header {
             text-align: center;
             color: white;
-            margin-bottom: 40px;
+            margin-bottom: 30px;
         }
         
         .header h1 {
             font-size: 2.5em;
             margin-bottom: 10px;
-            font-weight: 600;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
         }
         
         .header p {
-            font-size: 1.1em;
+            font-size: 1.2em;
             opacity: 0.9;
-        }
-        
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
-        }
-        
-        .stat-card {
-            background: white;
-            border-radius: 12px;
-            padding: 25px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-            transition: transform 0.2s;
-        }
-        
-        .stat-card:hover {
-            transform: translateY(-5px);
-        }
-        
-        .stat-label {
-            font-size: 0.9em;
-            color: #666;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            margin-bottom: 10px;
-        }
-        
-        .stat-value {
-            font-size: 2.5em;
-            font-weight: 700;
-            color: #333;
-        }
-        
-        .stat-icon {
-            font-size: 2em;
-            margin-bottom: 10px;
-        }
-        
-        .queue { color: #667eea; }
-        .processing { color: #f093fb; }
-        .success { color: #4facfe; }
-        .rejected { color: #fa709a; }
-        .error { color: #ff6b6b; }
-        
-        .breakdown-section {
-            background: white;
-            border-radius: 12px;
-            padding: 30px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-            margin-bottom: 30px;
-        }
-        
-        .breakdown-section h2 {
-            font-size: 1.5em;
-            margin-bottom: 20px;
-            color: #333;
-        }
-        
-        .breakdown-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-        }
-        
-        .breakdown-item {
-            padding: 15px;
-            border-radius: 8px;
-            background: #f8f9fa;
-            border-left: 4px solid;
-        }
-        
-        .breakdown-item.frequency { border-color: #feca57; }
-        .breakdown-item.prescreen { border-color: #ff6b6b; }
-        .breakdown-item.enriched { border-color: #48dbfb; }
-        .breakdown-item.error { border-color: #ff9ff3; }
-        
-        .breakdown-label {
-            font-size: 0.85em;
-            color: #666;
-            margin-bottom: 5px;
-        }
-        
-        .breakdown-value {
-            font-size: 1.8em;
-            font-weight: 600;
-            color: #333;
-        }
-        
-        .refresh-info {
-            text-align: center;
-            color: white;
-            margin-top: 20px;
-            opacity: 0.8;
         }
         
         .loading {
             text-align: center;
             color: white;
-            font-size: 1.2em;
-            margin: 50px 0;
+            font-size: 1.5em;
+            margin-top: 100px;
         }
         
-        .progress-bar {
-            background: rgba(255,255,255,0.3);
-            height: 8px;
-            border-radius: 4px;
-            margin-top: 15px;
-            overflow: hidden;
+        /* Top KPIs Grid */
+        .kpis-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
         }
         
-        .progress-fill {
+        .kpi-card {
             background: white;
-            height: 100%;
-            border-radius: 4px;
-            transition: width 0.3s ease;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            text-align: center;
+            transition: transform 0.2s;
+        }
+        
+        .kpi-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+        }
+        
+        .kpi-label {
+            font-size: 0.9em;
+            color: #666;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+        
+        .kpi-value {
+            font-size: 2.2em;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .kpi-value.queue { color: #ff9800; }
+        .kpi-value.processing { color: #2196f3; }
+        .kpi-value.completed { color: #4caf50; }
+        .kpi-value.errors { color: #f44336; }
+        
+        /* Three Column Layout */
+        .sections-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .section {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        .section-title {
+            font-size: 1.3em;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 3px solid #667eea;
+        }
+        
+        .metric-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .metric-row:last-child {
+            border-bottom: none;
+        }
+        
+        .metric-label {
+            font-size: 0.95em;
+            color: #666;
+            font-weight: 500;
+        }
+        
+        .metric-value {
+            font-size: 1.3em;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .metric-value.primary { color: #667eea; }
+        .metric-value.success { color: #4caf50; }
+        .metric-value.warning { color: #ff9800; }
+        .metric-value.danger { color: #f44336; }
+        
+        .tier-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.85em;
+            font-weight: 600;
+            margin-right: 8px;
+        }
+        
+        .tier-badge.auto { background: #e8f5e9; color: #2e7d32; }
+        .tier-badge.high { background: #e3f2fd; color: #1565c0; }
+        .tier-badge.standard { background: #fff3e0; color: #e65100; }
+        .tier-badge.low { background: #fce4ec; color: #c2185b; }
+        
+        .refresh-info {
+            text-align: center;
+            color: white;
+            font-size: 0.9em;
+            margin-top: 20px;
+            opacity: 0.9;
+        }
+        
+        @media (max-width: 1200px) {
+            .sections-grid {
+                grid-template-columns: 1fr;
+            }
         }
         
         @media (max-width: 768px) {
+            .kpis-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
             .header h1 {
                 font-size: 1.8em;
             }
-            .stat-value {
-                font-size: 2em;
+            .kpi-value {
+                font-size: 1.8em;
             }
         }
     </style>
@@ -818,7 +833,7 @@ def dashboard():
     <div class="container">
         <div class="header">
             <h1>🚀 TrovaTrip Enrichment Dashboard</h1>
-            <p>Real-time profile processing status</p>
+            <p>Real-time profile processing & batch quality metrics</p>
         </div>
         
         <div id="loading" class="loading">
@@ -826,60 +841,139 @@ def dashboard():
         </div>
         
         <div id="dashboard" style="display: none;">
-            <!-- Main Stats Grid -->
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <div class="stat-icon queue">⏳</div>
-                    <div class="stat-label">In Queue</div>
-                    <div class="stat-value" id="queue-count">-</div>
+            <!-- Top KPIs -->
+            <div class="kpis-grid">
+                <div class="kpi-card">
+                    <div class="kpi-label">In Queue</div>
+                    <div class="kpi-value queue" id="queue-count">-</div>
                 </div>
                 
-                <div class="stat-card">
-                    <div class="stat-icon processing">⚙️</div>
-                    <div class="stat-label">Processing</div>
-                    <div class="stat-value" id="processing-count">-</div>
+                <div class="kpi-card">
+                    <div class="kpi-label">Processing</div>
+                    <div class="kpi-value processing" id="processing-count">-</div>
                 </div>
                 
-                <div class="stat-card">
-                    <div class="stat-icon success">✅</div>
-                    <div class="stat-label">Total Completed</div>
-                    <div class="stat-value" id="total-completed">-</div>
+                <div class="kpi-card">
+                    <div class="kpi-label">Total Completed</div>
+                    <div class="kpi-value completed" id="total-completed">-</div>
                 </div>
                 
-                <div class="stat-card">
-                    <div class="stat-icon error">❌</div>
-                    <div class="stat-label">Total Errors</div>
-                    <div class="stat-value" id="total-errors">-</div>
+                <div class="kpi-card">
+                    <div class="kpi-label">Total Errors</div>
+                    <div class="kpi-value errors" id="total-errors">-</div>
+                </div>
+                
+                <div class="kpi-card">
+                    <div class="kpi-label">Avg Duration (sec)</div>
+                    <div class="kpi-value" id="avg-duration">-</div>
+                </div>
+                
+                <div class="kpi-card">
+                    <div class="kpi-label">Est. Time Left (min)</div>
+                    <div class="kpi-value" id="est-time">-</div>
                 </div>
             </div>
             
-            <!-- Breakdown Section -->
-            <div class="breakdown-section">
-                <h2>📊 Processing Breakdown</h2>
-                <div class="breakdown-grid">
-                    <div class="breakdown-item frequency">
-                        <div class="breakdown-label">Post Frequency</div>
-                        <div class="breakdown-value" id="frequency-count">-</div>
+            <!-- Three Column Sections -->
+            <div class="sections-grid">
+                <!-- Pre-screening Section -->
+                <div class="section">
+                    <div class="section-title">🔍 Pre-screening</div>
+                    
+                    <div class="metric-row">
+                        <div class="metric-label">Pre-screened Out</div>
+                        <div class="metric-value danger" id="total-prescreened">-</div>
                     </div>
                     
-                    <div class="breakdown-item prescreen">
-                        <div class="breakdown-label">Pre-screened Out</div>
-                        <div class="breakdown-value" id="prescreen-count">-</div>
+                    <div class="metric-row">
+                        <div class="metric-label">↳ Low Post Frequency</div>
+                        <div class="metric-value warning" id="low-frequency">-</div>
                     </div>
                     
-                    <div class="breakdown-item enriched">
-                        <div class="breakdown-label">Enriched & Scored</div>
-                        <div class="breakdown-value" id="enriched-count">-</div>
-                    </div>
-                    
-                    <div class="breakdown-item error">
-                        <div class="breakdown-label">Errors</div>
-                        <div class="breakdown-value" id="error-count">-</div>
+                    <div class="metric-row">
+                        <div class="metric-label">↳ Outside ICP</div>
+                        <div class="metric-value warning" id="outside-icp">-</div>
                     </div>
                 </div>
                 
-                <div class="progress-bar">
-                    <div class="progress-fill" id="progress-bar" style="width: 0%"></div>
+                <!-- Enriched & Scored Section -->
+                <div class="section">
+                    <div class="section-title">✨ Enriched & Scored</div>
+                    
+                    <div class="metric-row">
+                        <div class="metric-label">Total Enriched & Scored</div>
+                        <div class="metric-value success" id="total-enriched">-</div>
+                    </div>
+                    
+                    <div class="metric-row">
+                        <div class="metric-label">
+                            <span class="tier-badge auto">●</span> Auto Enroll
+                        </div>
+                        <div class="metric-value" id="tier-auto">-</div>
+                    </div>
+                    
+                    <div class="metric-row">
+                        <div class="metric-label">
+                            <span class="tier-badge high">●</span> High Priority
+                        </div>
+                        <div class="metric-value" id="tier-high">-</div>
+                    </div>
+                    
+                    <div class="metric-row">
+                        <div class="metric-label">
+                            <span class="tier-badge standard">●</span> Standard Priority
+                        </div>
+                        <div class="metric-value" id="tier-standard">-</div>
+                    </div>
+                    
+                    <div class="metric-row">
+                        <div class="metric-label">
+                            <span class="tier-badge low">●</span> Low Priority
+                        </div>
+                        <div class="metric-value" id="tier-low">-</div>
+                    </div>
+                </div>
+                
+                <!-- Batch Quality Section -->
+                <div class="section">
+                    <div class="section-title">📈 Batch Quality</div>
+                    
+                    <div class="metric-row">
+                        <div class="metric-label">Passed Pre-screening</div>
+                        <div class="metric-value success" id="pass-rate">-</div>
+                    </div>
+                    
+                    <div style="margin-top: 15px; padding-top: 15px; border-top: 2px solid #eee;">
+                        <div style="font-size: 0.85em; color: #999; margin-bottom: 10px; font-weight: 600;">TIER BREAKDOWN</div>
+                        
+                        <div class="metric-row">
+                            <div class="metric-label">
+                                <span class="tier-badge auto">●</span> Auto Enroll
+                            </div>
+                            <div class="metric-value" id="tier-pct-auto">-</div>
+                        </div>
+                        
+                        <div class="metric-row">
+                            <div class="metric-label">
+                                <span class="tier-badge high">●</span> High Priority
+                            </div>
+                            <div class="metric-value" id="tier-pct-high">-</div>
+                        </div>
+                        
+                        <div class="metric-row">
+                            <div class="metric-label">
+                                <span class="tier-badge standard">●</span> Standard
+                            </div>
+                            <div class="metric-value" id="tier-pct-standard">-</div>
+                        </div>
+                        
+                        <div class="metric-row">
+                            <div class="metric-label">
+                                <span class="tier-badge low">●</span> Low
+                            </div>
+                            <div class="metric-value" id="tier-pct-low">-</div>
+                        </div>
+                    </div>
                 </div>
             </div>
             
@@ -896,22 +990,32 @@ def dashboard():
                 const response = await fetch('/api/stats');
                 const data = await response.json();
                 
-                // Update main stats
+                // Update top KPIs
                 document.getElementById('queue-count').textContent = data.queue_size || 0;
                 document.getElementById('processing-count').textContent = data.active_workers || 0;
                 document.getElementById('total-completed').textContent = data.total_completed || 0;
                 document.getElementById('total-errors').textContent = data.total_errors || 0;
+                document.getElementById('avg-duration').textContent = data.avg_duration || 0;
+                document.getElementById('est-time').textContent = data.est_time_remaining || 0;
                 
-                // Update breakdown
-                document.getElementById('frequency-count').textContent = data.breakdown.post_frequency || 0;
-                document.getElementById('prescreen-count').textContent = data.breakdown.pre_screened || 0;
-                document.getElementById('enriched-count').textContent = data.breakdown.enriched || 0;
-                document.getElementById('error-count').textContent = data.breakdown.errors || 0;
+                // Update pre-screening
+                document.getElementById('total-prescreened').textContent = data.pre_screening.total_pre_screened || 0;
+                document.getElementById('low-frequency').textContent = data.pre_screening.low_post_frequency || 0;
+                document.getElementById('outside-icp').textContent = data.pre_screening.outside_icp || 0;
                 
-                // Update progress bar
-                const total = data.total_completed + data.total_errors;
-                const progress = total > 0 ? (total / (total + data.queue_size)) * 100 : 0;
-                document.getElementById('progress-bar').style.width = progress + '%';
+                // Update enriched & scored
+                document.getElementById('total-enriched').textContent = data.priority_tiers.total || 0;
+                document.getElementById('tier-auto').textContent = data.priority_tiers.auto_enroll || 0;
+                document.getElementById('tier-high').textContent = data.priority_tiers.high_priority_review || 0;
+                document.getElementById('tier-standard').textContent = data.priority_tiers.standard_priority_review || 0;
+                document.getElementById('tier-low').textContent = data.priority_tiers.low_priority_review || 0;
+                
+                // Update batch quality
+                document.getElementById('pass-rate').textContent = (data.batch_quality.pass_rate || 0) + '%';
+                document.getElementById('tier-pct-auto').textContent = (data.batch_quality.tier_percentages.auto_enroll || 0) + '%';
+                document.getElementById('tier-pct-high').textContent = (data.batch_quality.tier_percentages.high_priority_review || 0) + '%';
+                document.getElementById('tier-pct-standard').textContent = (data.batch_quality.tier_percentages.standard_priority_review || 0) + '%';
+                document.getElementById('tier-pct-low').textContent = (data.batch_quality.tier_percentages.low_priority_review || 0) + '%';
                 
                 // Update timestamp
                 document.getElementById('last-update').textContent = new Date().toLocaleTimeString();
@@ -935,8 +1039,6 @@ def dashboard():
 </body>
 </html>
     '''
-
-
 @app.route('/api/stats')
 def get_stats():
     """API endpoint for dashboard stats"""
@@ -959,19 +1061,87 @@ def get_stats():
         enriched = int(result_counts.get('enriched', 0))
         errors = int(result_counts.get('error', 0))
         
+        # Get priority tier counts
+        tier_counts = r.hgetall('trovastats:priority_tiers') or {}
+        auto_enroll = int(tier_counts.get('auto_enroll', 0))
+        high_priority = int(tier_counts.get('high_priority_review', 0))
+        standard_priority = int(tier_counts.get('standard_priority_review', 0))
+        low_priority = int(tier_counts.get('low_priority_review', 0))
+        
+        # Calculate totals
         total_completed = post_frequency + pre_screened + enriched
         total_errors = errors
+        total_processed = total_completed + total_errors
+        
+        # Calculate average duration
+        durations = r.lrange('trovastats:durations', 0, -1)
+        avg_duration = 0
+        if durations:
+            durations_int = [int(d) for d in durations]
+            avg_duration = sum(durations_int) / len(durations_int)
+        
+        # Calculate estimated time remaining (in minutes)
+        est_time_remaining = 0
+        if avg_duration > 0 and queue_size > 0:
+            # Estimate based on queue size and average duration
+            # Assuming 2 workers processing in parallel
+            workers = 2
+            est_time_remaining = (queue_size / workers) * avg_duration / 60
+        
+        # Calculate percentages for batch quality
+        total_passed = enriched
+        pass_rate = (total_passed / total_processed * 100) if total_processed > 0 else 0
+        
+        # Priority tier percentages (of those that passed pre-screening)
+        tier_percentages = {}
+        if total_passed > 0:
+            tier_percentages = {
+                'auto_enroll': (auto_enroll / total_passed * 100),
+                'high_priority_review': (high_priority / total_passed * 100),
+                'standard_priority_review': (standard_priority / total_passed * 100),
+                'low_priority_review': (low_priority / total_passed * 100)
+            }
+        else:
+            tier_percentages = {
+                'auto_enroll': 0,
+                'high_priority_review': 0,
+                'standard_priority_review': 0,
+                'low_priority_review': 0
+            }
         
         return jsonify({
             'queue_size': queue_size,
             'active_workers': active_workers,
             'total_completed': total_completed,
             'total_errors': total_errors,
+            'avg_duration': round(avg_duration, 1),
+            'est_time_remaining': round(est_time_remaining, 1),
             'breakdown': {
                 'post_frequency': post_frequency,
                 'pre_screened': pre_screened,
                 'enriched': enriched,
                 'errors': errors
+            },
+            'pre_screening': {
+                'total_pre_screened': post_frequency + pre_screened,
+                'low_post_frequency': post_frequency,
+                'outside_icp': pre_screened
+            },
+            'priority_tiers': {
+                'auto_enroll': auto_enroll,
+                'high_priority_review': high_priority,
+                'standard_priority_review': standard_priority,
+                'low_priority_review': low_priority,
+                'total': total_passed
+            },
+            'batch_quality': {
+                'pass_rate': round(pass_rate, 1),
+                'tier_percentages': {
+                    'auto_enroll': round(tier_percentages['auto_enroll'], 1),
+                    'high_priority_review': round(tier_percentages['high_priority_review'], 1),
+                    'standard_priority_review': round(tier_percentages['standard_priority_review'], 1),
+                    'low_priority_review': round(tier_percentages['low_priority_review'], 1)
+                }
             }
         })
         
@@ -986,11 +1156,34 @@ def get_stats():
             'active_workers': 0,
             'total_completed': 0,
             'total_errors': 0,
+            'avg_duration': 0,
+            'est_time_remaining': 0,
             'breakdown': {
                 'post_frequency': 0,
                 'pre_screened': 0,
                 'enriched': 0,
                 'errors': 0
+            },
+            'pre_screening': {
+                'total_pre_screened': 0,
+                'low_post_frequency': 0,
+                'outside_icp': 0
+            },
+            'priority_tiers': {
+                'auto_enroll': 0,
+                'high_priority_review': 0,
+                'standard_priority_review': 0,
+                'low_priority_review': 0,
+                'total': 0
+            },
+            'batch_quality': {
+                'pass_rate': 0,
+                'tier_percentages': {
+                    'auto_enroll': 0,
+                    'high_priority_review': 0,
+                    'standard_priority_review': 0,
+                    'low_priority_review': 0
+                }
             }
         }), 200
 
@@ -1005,8 +1198,10 @@ def reset_stats():
         redis_url = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
         r = redis.from_url(redis_url, decode_responses=True)
         
-        # Delete the stats hash
+        # Delete all stats keys
         r.delete('trovastats:results')
+        r.delete('trovastats:priority_tiers')
+        r.delete('trovastats:durations')
         
         return jsonify({
             'status': 'success',

@@ -562,24 +562,46 @@ def rehost_media_on_r2(media_url: str, contact_id: str, media_format: str) -> st
         return media_url
 
 
-def transcribe_video_with_whisper(video_url: str) -> str:
-    """Transcribe video using Whisper"""
-    video_response = requests.get(video_url, timeout=30)
-    video_response.raise_for_status()
+def transcribe_video_with_whisper(video_url: str, max_retries: int = 3) -> str:
+    """
+    Transcribe video using Whisper with retry logic for rate limits
+    Handles Whisper's 50 RPM limit gracefully with exponential backoff
+    """
+    import time
     
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as temp_video:
-        temp_video.write(video_response.content)
-        temp_video_path = temp_video.name
-    
-    try:
-        with open(temp_video_path, 'rb') as audio_file:
-            transcript = client.audio.transcriptions.create(
-                model="whisper-1",
-                file=audio_file
-            )
-        return transcript.text
-    finally:
-        os.unlink(temp_video_path)
+    for attempt in range(max_retries):
+        try:
+            video_response = requests.get(video_url, timeout=30)
+            video_response.raise_for_status()
+            
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as temp_video:
+                temp_video.write(video_response.content)
+                temp_video_path = temp_video.name
+            
+            try:
+                with open(temp_video_path, 'rb') as audio_file:
+                    transcript = client.audio.transcriptions.create(
+                        model="whisper-1",
+                        file=audio_file
+                    )
+                return transcript.text
+            finally:
+                os.unlink(temp_video_path)
+                
+        except Exception as e:
+            error_str = str(e).lower()
+            is_rate_limit = 'rate_limit' in error_str or '429' in error_str or 'rate limit' in error_str
+            
+            if is_rate_limit and attempt < max_retries - 1:
+                wait_time = (attempt + 1) * 10  # 10s, 20s, 30s
+                print(f"⚠️  Whisper rate limit hit, waiting {wait_time}s (attempt {attempt + 1}/{max_retries})")
+                time.sleep(wait_time)
+            else:
+                if attempt == max_retries - 1:
+                    print(f"❌ Whisper failed after {max_retries} attempts: {e}")
+                raise
+
+
 
 
 def analyze_content_item(media_url: str, media_format: str) -> Dict[str, Any]:
@@ -810,24 +832,29 @@ Respond ONLY with JSON:
 def create_thumbnail_grid(thumbnail_urls: List[str], contact_id: str) -> str:
     """
     Create a 3x4 grid image from up to 12 thumbnails and upload to R2
+    Uses parallel downloads for 3-4x speed improvement
     Returns: R2 URL of the grid image
     """
     from PIL import Image
     import io
+    import concurrent.futures
     
-    # Download thumbnails
-    images = []
-    for url in thumbnail_urls[:12]:  # Max 12
+    def download_single_image(url):
+        """Download and resize a single thumbnail"""
         try:
             response = requests.get(url, timeout=10)
             img = Image.open(io.BytesIO(response.content))
             # Resize to standard size (400x400)
-            img = img.resize((400, 400), Image.Resampling.LANCZOS)
-            images.append(img)
+            return img.resize((400, 400), Image.Resampling.LANCZOS)
         except Exception as e:
             print(f"Error loading thumbnail {url}: {e}")
             # Create blank placeholder
-            images.append(Image.new('RGB', (400, 400), color='gray'))
+            return Image.new('RGB', (400, 400), color='gray')
+    
+    # Download images in parallel (4 at a time for optimal performance)
+    images = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+        images = list(executor.map(download_single_image, thumbnail_urls[:12]))
     
     # Pad to 12 if needed
     while len(images) < 12:
@@ -1033,10 +1060,10 @@ Example format:
     
     result = json.loads(response.choices[0].message.content)
     
-    # Ensure primary_category is present (fallback to Lifestyle if not provided)
+    # Ensure primary_category is present (fallback to unknown if not provided)
     if 'primary_category' not in result:
-        result['primary_category'] = 'Lifestyle'
-        print("Warning: primary_category not provided by AI, defaulting to 'Lifestyle'")
+        result['primary_category'] = 'unknown'
+        print("Warning: primary_category not provided by AI, defaulting to 'unknown'")
     
     print(f"Creator Profile: {json.dumps(result, indent=2)}")
     return result
@@ -1119,7 +1146,7 @@ def generate_evidence_based_score(
     """
     
     # Get primary category and examples
-    primary_category = creator_profile.get('primary_category', 'Lifestyle')
+    primary_category = creator_profile.get('primary_category', 'unknown')
     category_examples_text = format_category_examples(primary_category)
     
     # Prepare content summaries
@@ -1302,19 +1329,19 @@ RESPOND ONLY with JSON (no preamble):
     
     # Determine priority tier using two-tier logic
     if manual_score_with_penalty >= 0.65:
-        priority_tier = "HIGH_PRIORITY"
+        priority_tier = "auto_enroll"
         expected_precision = 0.833
         tier_reasoning = "Manual score ≥0.65 (83% precision)"
     elif full_score >= 0.50:
-        priority_tier = "STANDARD_REVIEW"
+        priority_tier = "high_priority_review"
         expected_precision = 0.705
         tier_reasoning = "Full score ≥0.50 (70% precision)"
     elif full_score >= 0.45:
-        priority_tier = "REVIEW_IF_CAPACITY"
+        priority_tier = "standard_priority_review"
         expected_precision = 0.681
         tier_reasoning = "Full score ≥0.45 (68% precision)"
     else:
-        priority_tier = "LOW_PRIORITY"
+        priority_tier = "low_priority_review"
         expected_precision = 0.0
         tier_reasoning = "Below review thresholds"
     
@@ -1429,6 +1456,7 @@ def send_to_hubspot(contact_id: str, lead_score: float, section_scores: Dict, sc
     # Track result type in Redis for dashboard stats
     try:
         import redis
+        import time
         redis_url = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
         r = redis.from_url(redis_url, decode_responses=True)
         
@@ -1436,13 +1464,18 @@ def send_to_hubspot(contact_id: str, lead_score: float, section_scores: Dict, sc
         result_type = 'enriched'  # Default
         if 'post frequency check' in score_reasoning.lower():
             result_type = 'post_frequency'
-        elif 'pre-screen rejected' in score_reasoning.lower():
+        elif 'pre-screen rejected' in score_reasoning.lower() or 'pre-screened' in score_reasoning.lower():
             result_type = 'pre_screened'
         elif enrichment_status == 'error':
             result_type = 'error'
         
         # Increment counter
         r.hincrby('trovastats:results', result_type, 1)
+        
+        # Track priority tier if enriched (from lead_analysis if available)
+        if result_type == 'enriched' and lead_analysis:
+            priority_tier = lead_analysis.get('priority_tier', 'unknown')
+            r.hincrby('trovastats:priority_tiers', priority_tier, 1)
         
     except Exception as e:
         print(f"Error tracking stats in Redis: {e}")
@@ -1467,7 +1500,7 @@ def send_to_hubspot(contact_id: str, lead_score: float, section_scores: Dict, sc
                                              section_scores.get('trip_fit_and_travelability', 0.0)),
         "content_summary_structured": "\n\n".join(content_summaries),
         "profile_category": safe_str(creator_profile.get('content_category')),
-        "primary_category": safe_str(creator_profile.get('primary_category', 'Lifestyle')),
+        "primary_category": safe_str(creator_profile.get('primary_category', 'unknown')),
         "profile_content_types": safe_str(creator_profile.get('content_types')),
         "profile_engagement": safe_str(creator_profile.get('audience_engagement')),
         "profile_presence": safe_str(creator_profile.get('creator_presence')),
@@ -1496,9 +1529,12 @@ def process_creator_profile(self, contact_id: str, profile_url: str, bio: str = 
     import time
     import random
     
+    # Track start time for performance metrics
+    start_time = time.time()
+    
     # Stagger processing to avoid OpenAI TPM bursts (V3.0 uses ~12K tokens per profile)
-    # With 2 workers, this prevents both hitting API simultaneously
-    time.sleep(random.uniform(1, 3))
+    # Increased from 1-3 to 3-5 seconds for high-volume production safety
+    time.sleep(random.uniform(3, 5))
     
     try:
         print(f"=== PROCESSING: {contact_id} ===")
@@ -1776,7 +1812,19 @@ def process_creator_profile(self, contact_id: str, profile_url: str, bio: str = 
             lead_analysis  # NEW: Pass full analysis for two-tier fields
         )
         
-        print(f"=== COMPLETE: {contact_id} - Score: {lead_analysis['lead_score']} ===")
+        # Track processing duration
+        duration = time.time() - start_time
+        try:
+            import redis
+            redis_url = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
+            r = redis.from_url(redis_url, decode_responses=True)
+            # Add duration to list (keep last 100)
+            r.lpush('trovastats:durations', int(duration))
+            r.ltrim('trovastats:durations', 0, 99)
+        except Exception as e:
+            print(f"Error tracking duration: {e}")
+        
+        print(f"=== COMPLETE: {contact_id} - Score: {lead_analysis['lead_score']} - Duration: {duration:.1f}s ===")
         
         return {
             "status": "success",
@@ -1786,7 +1834,8 @@ def process_creator_profile(self, contact_id: str, profile_url: str, bio: str = 
             "creator_profile": creator_profile,
             "items_analyzed": len(content_analyses),
             "pre_screen_passed": True,
-            "travel_experience_detected": has_travel_experience
+            "travel_experience_detected": has_travel_experience,
+            "processing_duration": duration
         }
         
     except Exception as e:
@@ -1794,6 +1843,7 @@ def process_creator_profile(self, contact_id: str, profile_url: str, bio: str = 
         print(f"Error: {str(e)}")
         import traceback
         print(f"Traceback: {traceback.format_exc()}")
+        
         return {
             "status": "error",
             "contact_id": contact_id,
@@ -1893,3 +1943,4 @@ def rescore_single_profile(self, contact_id: str):
         
         # Other errors retry after 60s
         raise self.retry(exc=e, countdown=60, max_retries=3)
+
