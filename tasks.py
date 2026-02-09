@@ -1257,15 +1257,22 @@ RESPOND ONLY with JSON (no preamble):
     community = result.get('community_infrastructure', 0.0)
     engagement = result.get('engagement_and_connection', 0.0)
     
-    # Calculate base combined score (V2.1 weights)
-    base_score = (
+    # Calculate MANUAL score (optimized weights, no adjustments)
+    # Based on analysis: authenticity is strongest separator (+0.126)
+    manual_score = (
         (niche * 0.30) +
-        (authenticity * 0.25) +
-        (monetization * 0.25) +
-        (community * 0.10) +
-        (engagement * 0.10)
+        (authenticity * 0.30) +  # Increased from 0.25 (strongest separator)
+        (monetization * 0.20) +
+        (community * 0.15) +
+        (engagement * 0.05)      # Decreased from 0.10
     )
     
+    # Apply entertainment penalty to manual score
+    category_penalty = -0.10 if primary_category == "Entertainment" else 0.0  # Doubled from -0.05
+    manual_score_with_penalty = manual_score + category_penalty
+    manual_score_with_penalty = max(0.0, min(1.0, manual_score_with_penalty))
+    
+    # Calculate adjustments for FULL score
     # Follower count boost (TIERED, not cumulative)
     if follower_count >= 100000:
         follower_boost = 0.15
@@ -1289,12 +1296,27 @@ RESPOND ONLY with JSON (no preamble):
     )
     engagement_adjustment = max(-0.20, min(0.20, engagement_adjustment))  # Cap at ±0.20
     
-    # Entertainment category penalty (ALL profiles)
-    category_penalty = -0.1 if primary_category == "Entertainment" else 0.0
+    # Calculate FULL score (manual + adjustments)
+    full_score = manual_score_with_penalty + follower_boost + engagement_adjustment
+    full_score = max(0.0, min(1.0, full_score))
     
-    # Calculate final score
-    final_score = base_score + follower_boost + engagement_adjustment + category_penalty
-    final_score = max(0.0, min(1.0, final_score))  # Clamp to 0.0-1.0
+    # Determine priority tier using two-tier logic
+    if manual_score_with_penalty >= 0.65:
+        priority_tier = "HIGH_PRIORITY"
+        expected_precision = 0.833
+        tier_reasoning = "Manual score ≥0.65 (83% precision)"
+    elif full_score >= 0.50:
+        priority_tier = "STANDARD_REVIEW"
+        expected_precision = 0.705
+        tier_reasoning = "Full score ≥0.50 (70% precision)"
+    elif full_score >= 0.45:
+        priority_tier = "REVIEW_IF_CAPACITY"
+        expected_precision = 0.681
+        tier_reasoning = "Full score ≥0.45 (68% precision)"
+    else:
+        priority_tier = "LOW_PRIORITY"
+        expected_precision = 0.0
+        tier_reasoning = "Below review thresholds"
     
     # Build detailed reasoning
     score_reasoning = result.get('score_reasoning', '')
@@ -1310,6 +1332,8 @@ RESPOND ONLY with JSON (no preamble):
     if adjustments:
         score_reasoning += " | ADJUSTMENTS: " + "; ".join(adjustments)
     
+    score_reasoning += f" | TIER: {priority_tier} ({tier_reasoning})"
+    
     # Build section scores dict
     section_scores = {
         "niche_and_audience_identity": niche,
@@ -1319,22 +1343,38 @@ RESPOND ONLY with JSON (no preamble):
         "engagement_and_connection": engagement
     }
     
-    print(f"  Base score: {base_score:.3f}")
+    print(f"  Manual score: {manual_score:.3f}")
+    print(f"  Category penalty: {category_penalty:+.3f}")
+    print(f"  Manual + penalty: {manual_score_with_penalty:.3f}")
     print(f"  Follower boost: +{follower_boost:.3f}")
     print(f"  Engagement adjustment: {engagement_adjustment:+.3f}")
-    print(f"  Category penalty: {category_penalty:+.3f}")
-    print(f"  FINAL SCORE: {final_score:.3f}")
+    print(f"  FULL SCORE: {full_score:.3f}")
+    print(f"  PRIORITY TIER: {priority_tier} (expected precision: {expected_precision:.1%})")
     
     return {
         "section_scores": section_scores,
-        "lead_score": final_score,
+        "manual_score": manual_score_with_penalty,
+        "lead_score": full_score,
+        "follower_boost": follower_boost,
+        "engagement_adjustment": engagement_adjustment,
+        "category_penalty": category_penalty,
+        "priority_tier": priority_tier,
+        "expected_precision": expected_precision,
         "score_reasoning": score_reasoning
     }
 def send_to_hubspot(contact_id: str, lead_score: float, section_scores: Dict, score_reasoning: str, 
-                    creator_profile: Dict, content_analyses: List[Dict]):
+                    creator_profile: Dict, content_analyses: List[Dict], lead_analysis: Dict = None):
     """Send results to HubSpot with validation"""
     content_summaries = [f"Content {idx} ({item['type']}): {item['summary']}" 
                         for idx, item in enumerate(content_analyses, 1)]
+    
+    # Extract additional fields from lead_analysis if provided
+    manual_score = lead_analysis.get('manual_score', 0.0) if lead_analysis else 0.0
+    follower_boost = lead_analysis.get('follower_boost', 0.0) if lead_analysis else 0.0
+    engagement_adjustment = lead_analysis.get('engagement_adjustment', 0.0) if lead_analysis else 0.0
+    category_penalty = lead_analysis.get('category_penalty', 0.0) if lead_analysis else 0.0
+    priority_tier = lead_analysis.get('priority_tier', '') if lead_analysis else ''
+    expected_precision = lead_analysis.get('expected_precision', 0.0) if lead_analysis else 0.0
     
     # Helper function to safely convert values to strings
     def safe_str(value):
@@ -1410,6 +1450,12 @@ def send_to_hubspot(contact_id: str, lead_score: float, section_scores: Dict, sc
     payload = {
         "contact_id": contact_id,
         "lead_score": lead_score,
+        "manual_score": manual_score,  # NEW: Score without follower/engagement adjustments
+        "follower_boost_applied": follower_boost,  # NEW: Amount of follower boost
+        "engagement_adjustment_applied": engagement_adjustment,  # NEW: Engagement adjustment
+        "category_penalty_applied": category_penalty,  # NEW: Entertainment penalty
+        "priority_tier": priority_tier,  # NEW: HIGH_PRIORITY, STANDARD_REVIEW, etc.
+        "expected_precision": expected_precision,  # NEW: Expected precision for this tier
         "score_reasoning": score_reasoning,
         # Support both old (v2.1) and new (v3.0) section score names
         "score_niche_and_audience": section_scores.get('niche_and_audience_identity', 0.0),
@@ -1726,7 +1772,8 @@ def process_creator_profile(self, contact_id: str, profile_url: str, bio: str = 
             lead_analysis.get('section_scores', {}),
             lead_analysis.get('score_reasoning', ''),
             creator_profile,
-            content_analyses
+            content_analyses,
+            lead_analysis  # NEW: Pass full analysis for two-tier fields
         )
         
         print(f"=== COMPLETE: {contact_id} - Score: {lead_analysis['lead_score']} ===")
@@ -1824,7 +1871,8 @@ def rescore_single_profile(self, contact_id: str):
             section_scores=lead_analysis.get('section_scores', {}),
             score_reasoning=lead_analysis.get('score_reasoning', ''),
             creator_profile=creator_profile,
-            content_analyses=content_analyses
+            content_analyses=content_analyses,
+            lead_analysis=lead_analysis  # NEW: Pass full analysis
         )
         
         print(f"[RESCORE] ✓ Successfully re-scored {contact_id}: {lead_analysis['lead_score']:.3f}")
@@ -1845,4 +1893,3 @@ def rescore_single_profile(self, contact_id: str):
         
         # Other errors retry after 60s
         raise self.retry(exc=e, countdown=60, max_retries=3)
-
