@@ -12,6 +12,12 @@ from celery_app import celery_app
 from openai import OpenAI
 from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
+from discovery_module import InsightIQDiscovery
+from discovery_tasks import (
+    discover_instagram_profiles,
+    update_discovery_job_status,
+    import_profiles_to_hubspot
+)
 
 # Configuration from environment variables
 INSIGHTIQ_USERNAME = os.getenv('INSIGHTIQ_USERNAME')
