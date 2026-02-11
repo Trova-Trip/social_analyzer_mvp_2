@@ -1009,6 +1009,78 @@ def health_check():
     """Health check endpoint"""
     return jsonify({"status": "healthy"}), 200
 
+@app.route('/webhook/async', methods=['POST'])
+def handle_webhook_async():
+    """Async webhook handler - returns immediately, processes in background"""
+    try:
+        from tasks import process_creator_profile
+        
+        data = request.get_json()
+        
+        contact_id = data.get('contact_id')
+        profile_url = data.get('profile_url')
+        bio = data.get('bio', '')
+        follower_count = data.get('follower_count', 0)
+        
+        if not all([contact_id, profile_url]):
+            return jsonify({"error": "Missing required fields: contact_id, profile_url"}), 400
+        
+        print(f"=== QUEUEING: {contact_id} ===")
+        if bio:
+            print(f"Bio: {bio[:100]}...")
+        if follower_count:
+            print(f"Follower count: {follower_count:,}")
+        
+        # Queue the task with profile data
+        task = process_creator_profile.delay(contact_id, profile_url, bio, follower_count)
+        
+        print(f"=== QUEUED: {contact_id} - Task ID: {task.id} ===")
+        
+        return jsonify({
+            "status": "queued",
+            "contact_id": contact_id,
+            "task_id": task.id,
+            "message": "Profile queued for processing"
+        }), 202
+        
+    except Exception as e:
+        print(f"ERROR in webhook: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/webhook/status/<task_id>', methods=['GET'])
+def check_task_status(task_id):
+    """Check status of a background task"""
+    from celery.result import AsyncResult
+    from celery_app import celery_app
+    
+    task = AsyncResult(task_id, app=celery_app)
+    
+    if task.state == 'PENDING':
+        response = {
+            'state': task.state,
+            'status': 'Task is waiting in queue...'
+        }
+    elif task.state == 'PROGRESS':
+        response = {
+            'state': task.state,
+            'status': task.info.get('stage', 'Processing...'),
+            'details': task.info
+        }
+    elif task.state == 'SUCCESS':
+        response = {
+            'state': task.state,
+            'result': task.result
+        }
+    else:
+        response = {
+            'state': task.state,
+            'status': str(task.info)
+        }
+    
+    return jsonify(response)
 
 # ============================================================================
 # DISCOVERY ROUTES
