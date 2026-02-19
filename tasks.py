@@ -2160,42 +2160,53 @@ class InsightIQDiscovery:
         print(f"Fetch complete: {len(all_results)} total profiles")
         return all_results
     
-    def _standardize_results(self, raw_results, platform):
+   def _standardize_results(self, raw_results, platform):
         """Convert raw API results to standardized format for HubSpot"""
         standardized = []
         
         for i, profile in enumerate(raw_results):
             try:
+                # Extract contact details
                 contact_details = self._extract_contact_details(
                     profile.get('contact_details', [])
                 )
                 
-                full_name = profile.get('full_name', '')
-                name_parts = [n.capitalize() for n in full_name.split()] if full_name else []
-                first_name = name_parts[0] if name_parts else ''
-                last_name = ' '.join(name_parts[1:]) if len(name_parts) > 1 else ''
+                # Get location
+                location = profile.get('location', {})
                 
-                location = profile.get('creator_location', {})
-                
+                # Standardized output mapped to HubSpot properties
                 standardized_profile = {
-                    'profile_url': profile.get('url', ''),
-                    'handle': profile.get('platform_username', ''),
-                    'display_name': full_name,
-                    'first_name': first_name,
-                    'last_name': last_name,
-                    'platform': platform,
-                    'follower_count': profile.get('follower_count') or profile.get('subscriber_count', 0),
-                    'engagement_rate': profile.get('engagement_rate', 0),
-                    'bio': profile.get('bio', ''),
+                    # Core identity
+                    'first_and_last_name': profile.get('full_name', ''),
+                    'flagship_social_platform_handle': profile.get('platform_username', ''),
+                    'instagram_handle': profile.get('url', ''),
+                    'instagram_bio': profile.get('introduction', ''),
+                    
+                    # Metrics
+                    'instagram_followers': profile.get('follower_count', 0),
+                    'average_engagement': profile.get('engagement_rate', 0),
+                    
+                    # Contact info from contact_details array
                     'email': contact_details.get('email'),
                     'phone': contact_details.get('phone'),
+                    'tiktok_handle': contact_details.get('tiktok'),
+                    'youtube_profile_link': contact_details.get('youtube'),
+                    'facebook_profile_link': contact_details.get('facebook'),
+                    'patreon_link': contact_details.get('patreon'),
+                    'pinterest_profile_link': contact_details.get('pinterest'),
+                    
+                    # Location
                     'city': location.get('city'),
                     'state': location.get('state'),
                     'country': location.get('country'),
+                    
+                    # Additional metadata
+                    'platform': platform,
+                    'is_verified': profile.get('is_verified', False),
                     'audience_credibility': profile.get('audience_credibility_category'),
-                    'last_post_date': profile.get('last_post_timestamp'),
-                    **{k: v for k, v in contact_details.items() 
-                       if k not in ('email', 'phone')}
+                    
+                    # Discovery tracking
+                    'discovery_source': 'insightiq_discovery'
                 }
                 
                 standardized.append(standardized_profile)
@@ -2204,10 +2215,12 @@ class InsightIQDiscovery:
                 print(f"Failed to process profile #{i+1}: {e}")
                 continue
         
+        print(f"Successfully processed {len(standardized)} profiles")
         return standardized
-    
+
+
     def _extract_contact_details(self, contact_details):
-        """Extract and format contact details"""
+        """Extract and format contact details - handles duplicates by taking first occurrence"""
         contacts = {}
         
         for detail in contact_details:
@@ -2215,13 +2228,11 @@ class InsightIQDiscovery:
             contact_value = detail.get('value', '')
             
             if contact_type and contact_value:
-                if contact_type in ('email', 'phone'):
+                # Only set if not already set (takes first occurrence)
+                if contact_type not in contacts:
                     contacts[contact_type] = contact_value
-                else:
-                    contacts[f'{contact_type}_url'] = contact_value
         
         return contacts
-
 
 # ============================================================================
 # Discovery Tasks
@@ -2322,37 +2333,43 @@ def import_profiles_to_hubspot(profiles, job_id):
     print(f"Preparing {len(profiles)} profiles for HubSpot import")
     
     for profile in profiles:
+        # Map discovery fields to HubSpot properties
         properties = {
-            'platform': profile.get('platform', 'instagram'),
-            'profile_url': profile['profile_url'],
-            'instagram_handle': profile.get('handle', ''),
-            'firstname': profile.get('first_name', ''),
-            'lastname': profile.get('last_name', ''),
-            'followers': profile.get('follower_count', 0),
-            'engagement_rate': profile.get('engagement_rate', 0),
+            # Core identity
+            'first_and_last_name': profile.get('first_and_last_name', ''),
+            'flagship_social_platform_handle': profile.get('flagship_social_platform_handle', ''),
+            'instagram_handle': profile.get('instagram_handle', ''),
+            'instagram_bio': profile.get('instagram_bio', ''),
+            
+            # Metrics
+            'instagram_followers': profile.get('instagram_followers', 0),
+            'average_engagement': profile.get('average_engagement', 0),
+            
+            # Contact info
             'email': profile.get('email'),
             'phone': profile.get('phone'),
+            'tiktok_handle': profile.get('tiktok_handle'),
+            'youtube_profile_link': profile.get('youtube_profile_link'),
+            'facebook_profile_link': profile.get('facebook_profile_link'),
+            'patreon_link': profile.get('patreon_link'),
+            'pinterest_profile_link': profile.get('pinterest_profile_link'),
+            
+            # Location
             'city': profile.get('city'),
             'state': profile.get('state'),
             'country': profile.get('country'),
-            'bio': profile.get('bio', '')[:5000] if profile.get('bio') else '',
-            'discovery_source': 'insightiq_discovery',
-            'discovery_job_id': job_id,
-            'discovery_date': datetime.now().isoformat(),
+            
+            # Discovery metadata
             'enrichment_status': 'pending',
-            'lifecycle_stage': 'lead',
-            'audience_credibility': profile.get('audience_credibility'),
-            'last_post_date': profile.get('last_post_date')
+            'lifecycle_stage': 'lead'
         }
         
-        for key, value in profile.items():
-            if key.endswith('_url') and key not in ('profile_url',):
-                properties[key] = value
+        # Remove None values (HubSpot API doesn't like them)
+        properties = {k: v for k, v in properties.items() if v is not None and v != ''}
         
-        properties = {k: v for k, v in properties.items() if v is not None}
         contacts.append({'properties': properties})
     
-    # Batch import
+    # Batch import (max 100 per request)
     created_count = 0
     skipped_count = 0
     total_batches = (len(contacts) + 99) // 100
@@ -2377,10 +2394,12 @@ def import_profiles_to_hubspot(profiles, job_id):
             )
             
             if response.status_code == 201:
+                # All created successfully
                 created_count += len(batch)
                 print(f"Batch {batch_num}: {len(batch)} contacts created")
                 
             elif response.status_code == 207:
+                # Multi-status: some created, some duplicates
                 result = response.json()
                 batch_created = len(result.get('results', []))
                 batch_errors = result.get('errors', [])
@@ -2391,7 +2410,12 @@ def import_profiles_to_hubspot(profiles, job_id):
                 
                 print(f"Batch {batch_num}: {batch_created} created, {batch_skipped} duplicates/errors")
                 
+                # Log first few errors for debugging
+                for error in batch_errors[:3]:
+                    print(f"Error: {error.get('message', 'Unknown error')}")
+                
             else:
+                # Error
                 print(f"Batch import error: {response.status_code} - {response.text}")
                 skipped_count += len(batch)
         
@@ -2399,6 +2423,7 @@ def import_profiles_to_hubspot(profiles, job_id):
             print(f"Exception importing batch {batch_num}: {e}")
             skipped_count += len(batch)
         
+        # Small delay between batches to avoid rate limits
         if i + 100 < len(contacts):
             time.sleep(0.5)
     
