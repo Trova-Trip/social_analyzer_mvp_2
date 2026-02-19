@@ -30,177 +30,172 @@
             </div>
         </div>
         
+<!-- Add this right after the Fixed Parameters Banner and before the Discovery Form -->
+
+        <!-- Platform Selector -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <h2 class="text-xl font-bold mb-4">Select Platform</h2>
+            
+            <div class="grid grid-cols-2 gap-4">
+                <button type="button" id="platform-instagram" 
+                        class="platform-btn platform-active flex items-center justify-center p-4 border-2 border-blue-500 bg-blue-50 rounded-lg cursor-pointer transition-all hover:bg-blue-100">
+                    <div class="text-center">
+                        <div class="text-3xl mb-2">📸</div>
+                        <div class="font-bold text-gray-900">Instagram</div>
+                        <div class="text-xs text-gray-600 mt-1">via InsightIQ</div>
+                    </div>
+                </button>
+                
+                <button type="button" id="platform-patreon" 
+                        class="platform-btn flex items-center justify-center p-4 border-2 border-gray-300 bg-white rounded-lg cursor-pointer transition-all hover:bg-gray-50">
+                    <div class="text-center">
+                        <div class="text-3xl mb-2">🎨</div>
+                        <div class="font-bold text-gray-900">Patreon</div>
+                        <div class="text-xs text-gray-600 mt-1">via Apify Scraper</div>
+                    </div>
+                </button>
+            </div>
+        </div>
+
         <!-- Discovery Form -->
         <div class="bg-white rounded-lg shadow-md p-6 mb-6">
             <h2 class="text-xl font-bold mb-4">Start New Discovery</h2>
             
             <form id="discovery-form" class="space-y-5">
-                <!-- Follower Count -->
-                <div>
-                    <label class="block text-sm font-bold text-gray-700 mb-2">Follower Range</label>
-                    <div class="grid grid-cols-2 gap-4">
-                        <div>
-                            <label class="block text-xs text-gray-600 mb-1">Minimum</label>
-                            <input type="number" id="min-followers" value="20000" step="1000"
-                                   class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                        </div>
-                        <div>
-                            <label class="block text-xs text-gray-600 mb-1">Maximum</label>
-                            <input type="number" id="max-followers" value="900000" step="1000"
-                                   class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                <!-- Instagram Filters (shown by default) -->
+                <div id="instagram-filters">
+                    <!-- Follower Count -->
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-2">Follower Range</label>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs text-gray-600 mb-1">Minimum</label>
+                                <input type="number" id="min-followers" value="20000" step="1000"
+                                       class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-600 mb-1">Maximum</label>
+                                <input type="number" id="max-followers" value="900000" step="1000"
+                                       class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                            </div>
                         </div>
                     </div>
-                </div>
-                
-                <!-- Max Results -->
-                <div>
-                    <label class="block text-sm font-bold text-gray-700 mb-2">Max Results</label>
-                    <input type="number" id="max-results" value="5000" min="1" max="5000" step="1"
-                           class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                    <p class="text-xs text-gray-500 mt-1">Maximum: 5000 profiles</p>
-                </div>
-                
-                <!-- Lookalike (Mutually Exclusive) -->
-                <div class="border border-gray-200 rounded-lg p-4 bg-gray-50">
-                    <label class="block text-sm font-bold text-gray-700 mb-3">
-                        Lookalike Search <span class="text-gray-500 font-normal">(Optional)</span>
-                    </label>
                     
-                    <div class="space-y-3">
-                        <label class="flex items-start">
-                            <input type="radio" name="lookalike-type" value="none" checked
-                                   class="mt-1 mr-3 text-blue-600">
-                            <div>
-                                <span class="text-sm font-medium">No lookalike</span>
-                                <p class="text-xs text-gray-600">Search without targeting similar accounts</p>
-                            </div>
-                        </label>
-                        
-                        <label class="flex items-start">
-                            <input type="radio" name="lookalike-type" value="creator"
-                                   class="mt-1 mr-3 text-blue-600">
-                            <div>
-                                <span class="text-sm font-medium">Creator Lookalike</span>
-                                <p class="text-xs text-gray-600">Find creators with similar content/style to a target account</p>
-                            </div>
-                        </label>
-                        
-                        <label class="flex items-start">
-                            <input type="radio" name="lookalike-type" value="audience"
-                                   class="mt-1 mr-3 text-blue-600">
-                            <div>
-                                <span class="text-sm font-medium">Audience Lookalike</span>
-                                <p class="text-xs text-gray-600">Find creators whose audience matches a target account's audience</p>
-                            </div>
-                        </label>
-                        
-                        <input type="text" id="lookalike-username" 
-                               placeholder="@username (required if lookalike selected)"
-                               class="w-full border border-gray-300 rounded-lg px-3 py-2 mt-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                               disabled>
+                    <!-- Max Results -->
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-2">Max Results</label>
+                        <input type="number" id="instagram-max-results" value="500" min="1" max="4000" step="1"
+                               class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                        <p class="text-xs text-gray-500 mt-1">Maximum: 4000 profiles (typical: 100-500)</p>
                     </div>
+                    
+                    <!-- Lookalike (Mutually Exclusive) -->
+                    <div class="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                        <label class="block text-sm font-bold text-gray-700 mb-3">
+                            Lookalike Search <span class="text-gray-500 font-normal">(Optional)</span>
+                        </label>
+                        
+                        <div class="space-y-3">
+                            <label class="flex items-start">
+                                <input type="radio" name="lookalike-type" value="none" checked
+                                       class="mt-1 mr-3 text-blue-600">
+                                <div>
+                                    <span class="text-sm font-medium">No lookalike</span>
+                                    <p class="text-xs text-gray-600">Search without targeting similar accounts</p>
+                                </div>
+                            </label>
+                            
+                            <label class="flex items-start">
+                                <input type="radio" name="lookalike-type" value="creator"
+                                       class="mt-1 mr-3 text-blue-600">
+                                <div>
+                                    <span class="text-sm font-medium">Creator Lookalike</span>
+                                    <p class="text-xs text-gray-600">Find creators with similar content/style</p>
+                                </div>
+                            </label>
+                            
+                            <label class="flex items-start">
+                                <input type="radio" name="lookalike-type" value="audience"
+                                       class="mt-1 mr-3 text-blue-600">
+                                <div>
+                                    <span class="text-sm font-medium">Audience Lookalike</span>
+                                    <p class="text-xs text-gray-600">Find creators whose audience matches</p>
+                                </div>
+                            </label>
+                            
+                            <input type="text" id="lookalike-username" 
+                                   placeholder="@username (required if lookalike selected)"
+                                   class="w-full border border-gray-300 rounded-lg px-3 py-2 mt-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                   disabled>
+                        </div>
+                    </div>
+                    
+                    <!-- Instagram Advanced Filters -->
+                    <details class="border border-gray-200 rounded-lg p-4">
+                        <summary class="font-bold cursor-pointer text-sm text-gray-700 hover:text-gray-900">
+                            Advanced Filters (Optional)
+                        </summary>
+                        
+                        <div class="mt-4 space-y-4">
+                            <div>
+                                <label class="block text-sm font-bold text-gray-700 mb-2">Creator Interests</label>
+                                <select id="creator-interests" multiple 
+                                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent h-32">
+                                    <option value="Television & Film">Television & Film</option>
+                                    <option value="Music">Music</option>
+                                    <option value="Travel, Tourism & Aviation">Travel, Tourism & Aviation</option>
+                                    <option value="Fitness & Yoga">Fitness & Yoga</option>
+                                    <option value="Beauty & Cosmetics">Beauty & Cosmetics</option>
+                                    <!-- Add all 28 options here -->
+                                </select>
+                                <p class="text-xs text-gray-500 mt-1">Hold Ctrl/Cmd to select multiple</p>
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-bold text-gray-700 mb-2">Audience Interests</label>
+                                <select id="audience-interests" multiple 
+                                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent h-32">
+                                    <option value="Television & Film">Television & Film</option>
+                                    <option value="Music">Music</option>
+                                    <option value="Travel, Tourism & Aviation">Travel, Tourism & Aviation</option>
+                                    <!-- Add all 28 options here -->
+                                </select>
+                                <p class="text-xs text-gray-500 mt-1">Hold Ctrl/Cmd to select multiple</p>
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-bold text-gray-700 mb-2">Hashtags</label>
+                                <input type="text" id="hashtags" 
+                                       placeholder="e.g., travel, wanderlust (comma-separated)"
+                                       class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                            </div>
+                        </div>
+                    </details>
                 </div>
                 
-<!-- Optional Advanced Filters -->
-                <details class="border border-gray-200 rounded-lg p-4">
-                    <summary class="font-bold cursor-pointer text-sm text-gray-700 hover:text-gray-900">
-                        Advanced Filters (Optional)
-                    </summary>
-                    
-                    <div class="mt-4 space-y-4">
-                        <div>
-                            <label class="block text-sm font-bold text-gray-700 mb-2">
-                                Creator Interests
-                            </label>
-                            <select id="creator-interests" multiple 
-                                    class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent h-32">
-                                <option value="Television & Film">Television & Film</option>
-                                <option value="Music">Music</option>
-                                <option value="Shopping & Retail">Shopping & Retail</option>
-                                <option value="Coffee, Tea & Beverages">Coffee, Tea & Beverages</option>
-                                <option value="Camera & Photography">Camera & Photography</option>
-                                <option value="Clothes, Shoes, Handbags & Accessories">Clothes, Shoes, Handbags & Accessories</option>
-                                <option value="Beer, Wine & Spirits">Beer, Wine & Spirits</option>
-                                <option value="Sports">Sports</option>
-                                <option value="Electronics & Computers">Electronics & Computers</option>
-                                <option value="Gaming">Gaming</option>
-                                <option value="Activewear">Activewear</option>
-                                <option value="Art & Design">Art & Design</option>
-                                <option value="Travel, Tourism & Aviation">Travel, Tourism & Aviation</option>
-                                <option value="Business & Careers">Business & Careers</option>
-                                <option value="Beauty & Cosmetics">Beauty & Cosmetics</option>
-                                <option value="Healthcare & Medicine">Healthcare & Medicine</option>
-                                <option value="Jewellery & Watches">Jewellery & Watches</option>
-                                <option value="Restaurants, Food & Grocery">Restaurants, Food & Grocery</option>
-                                <option value="Toys, Children & Baby">Toys, Children & Baby</option>
-                                <option value="Fitness & Yoga">Fitness & Yoga</option>
-                                <option value="Wedding">Wedding</option>
-                                <option value="Tobacco & Smoking">Tobacco & Smoking</option>
-                                <option value="Pets">Pets</option>
-                                <option value="Healthy Lifestyle">Healthy Lifestyle</option>
-                                <option value="Luxury Goods">Luxury Goods</option>
-                                <option value="Home Decor, Furniture & Garden">Home Decor, Furniture & Garden</option>
-                                <option value="Friends, Family & Relationships">Friends, Family & Relationships</option>
-                                <option value="Cars & Motorbikes">Cars & Motorbikes</option>
-                            </select>
-                            <p class="text-xs text-gray-500 mt-1">
-                                Hold Ctrl/Cmd to select multiple interests. Leave empty to search all interests.
-                            </p>
-                        </div>
-                        
-                        <div>
-                            <label class="block text-sm font-bold text-gray-700 mb-2">
-                                Audience Interests
-                            </label>
-                            <select id="audience-interests" multiple 
-                                    class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent h-32">
-                                <option value="Television & Film">Television & Film</option>
-                                <option value="Music">Music</option>
-                                <option value="Shopping & Retail">Shopping & Retail</option>
-                                <option value="Coffee, Tea & Beverages">Coffee, Tea & Beverages</option>
-                                <option value="Camera & Photography">Camera & Photography</option>
-                                <option value="Clothes, Shoes, Handbags & Accessories">Clothes, Shoes, Handbags & Accessories</option>
-                                <option value="Beer, Wine & Spirits">Beer, Wine & Spirits</option>
-                                <option value="Sports">Sports</option>
-                                <option value="Electronics & Computers">Electronics & Computers</option>
-                                <option value="Gaming">Gaming</option>
-                                <option value="Activewear">Activewear</option>
-                                <option value="Art & Design">Art & Design</option>
-                                <option value="Travel, Tourism & Aviation">Travel, Tourism & Aviation</option>
-                                <option value="Business & Careers">Business & Careers</option>
-                                <option value="Beauty & Cosmetics">Beauty & Cosmetics</option>
-                                <option value="Healthcare & Medicine">Healthcare & Medicine</option>
-                                <option value="Jewellery & Watches">Jewellery & Watches</option>
-                                <option value="Restaurants, Food & Grocery">Restaurants, Food & Grocery</option>
-                                <option value="Toys, Children & Baby">Toys, Children & Baby</option>
-                                <option value="Fitness & Yoga">Fitness & Yoga</option>
-                                <option value="Wedding">Wedding</option>
-                                <option value="Tobacco & Smoking">Tobacco & Smoking</option>
-                                <option value="Pets">Pets</option>
-                                <option value="Healthy Lifestyle">Healthy Lifestyle</option>
-                                <option value="Luxury Goods">Luxury Goods</option>
-                                <option value="Home Decor, Furniture & Garden">Home Decor, Furniture & Garden</option>
-                                <option value="Friends, Family & Relationships">Friends, Family & Relationships</option>
-                                <option value="Cars & Motorbikes">Cars & Motorbikes</option>
-                            </select>
-                            <p class="text-xs text-gray-500 mt-1">
-                                Hold Ctrl/Cmd to select multiple interests. Leave empty to search all interests.
-                            </p>
-                        </div>
-                        
-                        <div>
-                            <label class="block text-sm font-bold text-gray-700 mb-2">
-                                Hashtags
-                            </label>
-                            <input type="text" id="hashtags" 
-                                   placeholder="e.g., travel, wanderlust, explore (comma-separated)"
-                                   class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                            <p class="text-xs text-gray-500 mt-1">
-                                Leave empty to search all hashtags
-                            </p>
-                        </div>
+                <!-- Patreon Filters (hidden by default) -->
+                <div id="patreon-filters" class="hidden">
+                    <!-- Keywords -->
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-2">
+                            Search Keywords
+                        </label>
+                        <input type="text" id="patreon-keywords" 
+                               placeholder="e.g., art, gaming, podcast (comma-separated)"
+                               class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                        <p class="text-xs text-gray-500 mt-1">
+                            Enter keywords to search Patreon creators. Separate multiple keywords with commas.
+                        </p>
                     </div>
-                </details>
+                    
+                    <!-- Max Results -->
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-2">Max Results</label>
+                        <input type="number" id="patreon-max-results" value="100" min="1" max="500" step="1"
+                               class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                        <p class="text-xs text-gray-500 mt-1">Maximum: 500 profiles (typical: 50-100)</p>
+                    </div>
+                </div>
                 
                 <button type="submit" 
                         class="w-full bg-blue-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-blue-700 transition-colors focus:ring-4 focus:ring-blue-300">
