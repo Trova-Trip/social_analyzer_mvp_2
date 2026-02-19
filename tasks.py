@@ -2335,7 +2335,7 @@ def import_profiles_to_hubspot(profiles, job_id):
     
     print(f"Preparing {len(profiles)} profiles for HubSpot import")
     
-    for profile in profiles:
+    for idx, profile in enumerate(profiles):
         # Map discovery fields to HubSpot properties
         properties = {
             # Core identity
@@ -2370,7 +2370,10 @@ def import_profiles_to_hubspot(profiles, job_id):
         # Remove None values (HubSpot API doesn't like them)
         properties = {k: v for k, v in properties.items() if v is not None and v != ''}
         
-        contacts.append({'properties': properties})
+        contacts.append({
+            'properties': properties,
+            'objectWriteTraceId': f"{job_id}_{idx}"
+        })
     
     # Batch import (max 100 per request)
     created_count = 0
