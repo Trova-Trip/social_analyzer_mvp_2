@@ -24,6 +24,7 @@ HUBSPOT_WEBHOOK_URL = os.getenv('HUBSPOT_WEBHOOK_URL')
 INSIGHTIQ_CLIENT_ID = os.getenv('INSIGHTIQ_CLIENT_ID')
 INSIGHTIQ_SECRET = os.getenv('INSIGHTIQ_SECRET')
 HUBSPOT_API_KEY = os.getenv('HUBSPOT_API_KEY')
+APIFY_API_TOKEN = os.getenv('APIFY_API_TOKEN')
 
 # R2 Configuration
 R2_ACCESS_KEY_ID = os.getenv('R2_ACCESS_KEY_ID')
@@ -1948,14 +1949,7 @@ def rescore_single_profile(self, contact_id: str):
         # Other errors retry after 60s
         raise self.retry(exc=e, countdown=60, max_retries=3)
 
-# ============================================================================
-# DISCOVERY MODULE - Add this to the END of your existing tasks.py
-# ============================================================================
 
-# Add these imports at the TOP of your tasks.py if not already there:
-# import time  (should already be there)
-
-# Discovery configuration (add to your config section at top)
 INSIGHTIQ_CLIENT_ID = os.getenv('INSIGHTIQ_CLIENT_ID')
 INSIGHTIQ_SECRET = os.getenv('INSIGHTIQ_SECRET')
 HUBSPOT_API_KEY = os.getenv('HUBSPOT_API_KEY')
@@ -2304,6 +2298,170 @@ def discover_instagram_profiles(user_filters=None, job_id=None):
         update_discovery_job_status(job_id, status='failed', error=str(e))
         raise
 
+@celery_app.task(name='tasks.discover_patreon_profiles')
+def discover_patreon_profiles(user_filters=None, job_id=None):
+    """
+    Run Patreon profile discovery via Apify scraper
+    
+    Args:
+        user_filters: dict with:
+            - search_keywords: list of str (e.g., ["art", "gaming"])
+            - max_results: int (1-500)
+        job_id: optional job tracking ID
+    
+    Returns:
+        dict with results summary
+    """
+    if job_id is None:
+        job_id = discover_patreon_profiles.request.id
+    
+    try:
+        update_discovery_job_status(job_id, status='discovering')
+        
+        if not APIFY_API_TOKEN:
+            raise ValueError("APIFY_API_TOKEN must be set in environment")
+        
+        user_filters = user_filters or {}
+        search_keywords = user_filters.get('search_keywords', [])
+        max_results = user_filters.get('max_results', 100)
+        
+        if not search_keywords:
+            raise ValueError("search_keywords required for Patreon discovery")
+        
+        print(f"Starting Patreon discovery with keywords: {search_keywords}, max: {max_results}")
+        
+        # Run Apify scraper
+        from apify_client import ApifyClient
+        
+        client = ApifyClient(APIFY_API_TOKEN)
+        
+        # Prepare the Actor input
+        run_input = {
+            "searchQueries": search_keywords,
+            "maxRequestsPerCrawl": max_results,
+            "proxyConfiguration": {
+                "useApifyProxy": True,
+                "apifyProxyGroups": ["RESIDENTIAL"],
+            },
+        }
+        
+        print("Starting Apify scraper...")
+        # Run the Actor and wait for it to finish
+        run = client.actor("mJiXU9PT4eLHuY0pi").call(run_input=run_input)
+        
+        print(f"Apify run complete: {run['id']}")
+        
+        # Fetch results from the dataset
+        profiles = []
+        for item in client.dataset(run["defaultDatasetId"]).iterate_items():
+            profiles.append(item)
+        
+        print(f"Patreon discovery complete: {len(profiles)} profiles found")
+        
+        # Update status
+        update_discovery_job_status(job_id, status='importing', profiles_found=len(profiles))
+        
+        # Standardize and import to HubSpot
+        standardized_profiles = standardize_patreon_profiles(profiles)
+        import_results = import_profiles_to_hubspot(standardized_profiles, job_id)
+        
+        # Final status
+        update_discovery_job_status(
+            job_id,
+            status='completed',
+            profiles_found=len(profiles),
+            new_contacts_created=import_results['created'],
+            duplicates_skipped=import_results['skipped']
+        )
+        
+        print(f"Job {job_id} completed: {import_results['created']} created, {import_results['skipped']} skipped")
+        
+        return {
+            'status': 'completed',
+            'profiles_found': len(profiles),
+            'new_contacts': import_results['created'],
+            'duplicates': import_results['skipped']
+        }
+        
+    except Exception as e:
+        print(f"Patreon discovery failed: {e}")
+        import traceback
+        traceback.print_exc()
+        update_discovery_job_status(job_id, status='failed', error=str(e))
+        raise
+
+
+def standardize_patreon_profiles(raw_profiles):
+    """
+    Convert Apify scraper results to standardized format for HubSpot
+    
+    Apify returns data like:
+    {
+        "name": "Creator Name",
+        "url": "https://www.patreon.com/creatorname",
+        "description": "Bio text...",
+        "patronCount": 1234,
+        "creationCount": 567,
+        "socialLinks": {
+            "twitter": "...",
+            "youtube": "...",
+            etc.
+        }
+    }
+    """
+    standardized = []
+    
+    for i, profile in enumerate(raw_profiles):
+        try:
+            # Extract name parts
+            full_name = profile.get('name', '')
+            name_parts = full_name.split() if full_name else []
+            first_name = name_parts[0] if name_parts else ''
+            last_name = ' '.join(name_parts[1:]) if len(name_parts) > 1 else ''
+            
+            # Get social links
+            social_links = profile.get('socialLinks', {})
+            
+            # Patreon username from URL
+            patreon_url = profile.get('url', '')
+            patreon_handle = patreon_url.split('/')[-1] if patreon_url else ''
+            
+            standardized_profile = {
+                # Core identity
+                'first_and_last_name': full_name,
+                'flagship_social_platform_handle': patreon_handle,
+                'patreon_link': patreon_url,
+                'instagram_bio': profile.get('description', ''),  # Using bio field for description
+                
+                # Patreon-specific metrics
+                'patreon_patron_count': profile.get('patronCount', 0),
+                'patreon_creation_count': profile.get('creationCount', 0),
+                
+                # Social links from profile
+                'email': profile.get('email'),  # If available
+                'instagram_handle': social_links.get('instagram'),
+                'youtube_profile_link': social_links.get('youtube'),
+                'tiktok_handle': social_links.get('tiktok'),
+                'facebook_profile_link': social_links.get('facebook'),
+                'twitter_handle': social_links.get('twitter'),
+                
+                # Metadata
+                'platform': 'patreon',
+                'discovery_source': 'apify_patreon_scraper'
+            }
+            
+            # Remove None/empty values
+            standardized_profile = {k: v for k, v in standardized_profile.items() 
+                                   if v is not None and v != '' and v != 0}
+            
+            standardized.append(standardized_profile)
+            
+        except Exception as e:
+            print(f"Failed to process Patreon profile #{i+1}: {e}")
+            continue
+    
+    print(f"Successfully processed {len(standardized)} Patreon profiles")
+    return standardized
 
 def update_discovery_job_status(job_id, status, **kwargs):
     """Update discovery job status in Redis"""
