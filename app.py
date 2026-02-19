@@ -1156,6 +1156,65 @@ def start_instagram_discovery():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/discovery/patreon', methods=['POST'])
+def start_patreon_discovery():
+    """
+    Start Patreon discovery job via Apify scraper
+    
+    POST body:
+    {
+        "search_keywords": ["art", "gaming"],
+        "max_results": 100
+    }
+    
+    Returns:
+        202 Accepted with job_id
+        400 Bad Request if validation fails
+    """
+    try:
+        from tasks import discover_patreon_profiles
+        
+        user_filters = request.json or {}
+        
+        # Validate search_keywords
+        search_keywords = user_filters.get('search_keywords', [])
+        if not isinstance(search_keywords, list) or len(search_keywords) == 0:
+            return jsonify({'error': 'search_keywords must be a non-empty array'}), 400
+        
+        # Validate max_results
+        max_results = user_filters.get('max_results', 100)
+        if not isinstance(max_results, int) or max_results < 1:
+            return jsonify({'error': 'max_results must be a positive integer'}), 400
+        if max_results > 500:
+            return jsonify({'error': 'max_results cannot exceed 500'}), 400
+        
+        # Queue discovery task
+        task = discover_patreon_profiles.delay(user_filters=user_filters)
+        job_id = str(task.id)
+        
+        # Initialize job tracking in Redis
+        r.setex(
+            f'discovery_job:{job_id}',
+            86400,  # 24 hour TTL
+            json.dumps({
+                'job_id': job_id,
+                'platform': 'patreon',
+                'status': 'queued',
+                'started_at': datetime.now().isoformat(),
+                'filters': user_filters,
+                'profiles_found': 0,
+                'new_contacts_created': 0,
+                'duplicates_skipped': 0
+            })
+        )
+        
+        return jsonify({
+            'job_id': job_id,
+            'status': 'queued'
+        }), 202
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/discovery/jobs/<job_id>')
 def get_discovery_job(job_id):
