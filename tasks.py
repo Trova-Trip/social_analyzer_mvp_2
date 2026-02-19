@@ -2070,9 +2070,15 @@ class InsightIQDiscovery:
         # Add optional filters
         if 'creator_interests' in user_filters and user_filters['creator_interests']:
             parameters['creator_interests'] = user_filters['creator_interests']
+            print(f"Creator interests: {parameters['creator_interests']}")
+        
+        if 'audience_interests' in user_filters and user_filters['audience_interests']:
+            parameters['audience_interests'] = user_filters['audience_interests']
+            print(f"Audience interests: {parameters['audience_interests']}")
         
         if 'hashtags' in user_filters and user_filters['hashtags']:
             parameters['hashtags'] = user_filters['hashtags']
+            print(f"Hashtags: {parameters['hashtags']}")
         
         print(f"Starting {platform} discovery with fixed parameters...")
         
@@ -2082,7 +2088,6 @@ class InsightIQDiscovery:
         print(f"Processing {len(raw_results)} profiles...")
         
         return self._standardize_results(raw_results, platform)
-    
     def _start_job(self, parameters):
         """Start InsightIQ export job"""
         url = 'https://api.insightiq.ai/v1/social/creators/profiles/search-export'
