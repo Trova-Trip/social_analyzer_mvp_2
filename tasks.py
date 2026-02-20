@@ -1398,8 +1398,115 @@ RESPOND ONLY with JSON (no preamble):
         "expected_precision": expected_precision,
         "score_reasoning": score_reasoning
     }
+def extract_first_names_from_instagram_profile(username: str, full_name: str, bio: str) -> str:
+    """
+    Use OpenAI to extract properly formatted first name(s) from Instagram profile
+    
+    Args:
+        username: Instagram handle (e.g., "johnsmith")
+        full_name: Full name from profile (e.g., "John Smith")
+        bio: Biography text
+    
+    Returns:
+        str: Formatted first name(s)
+            - Single person: "John"
+            - Couple: "John and Jane"
+            - 3+ people: "John, Jane, and Bill"
+            - Fallback: "there"
+    """
+    if not client:
+        print("OpenAI client not initialized, using fallback")
+        return "there"
+    
+    # Quick validation
+    if not username and not full_name:
+        return "there"
+    
+    prompt = f"""Extract the first name(s) from this Instagram profile.
+
+Profile Information:
+- Username: @{username}
+- Full Name: {full_name}
+- Bio: {bio[:300] if bio else 'Not provided'}
+
+Rules:
+1. Determine if this is:
+   - Single person → Return just their first name: "John"
+   - Couple (2 people) → Return both first names: "John and Jane"
+   - Group (3+ people) → Return all first names: "John, Jane, and Bill"
+
+2. Formatting:
+   - Use ONLY first names (not full names or last names)
+   - Capitalize properly: "John" not "john" or "JOHN"
+   - For couples: "Name and Name" (no comma before "and")
+   - For 3+: "Name, Name, and Name" (comma before final "and")
+
+3. Special cases:
+   - If brand/company (no people), return the brand name
+   - If you cannot determine, return exactly: there
+
+4. Context clues:
+   - Look for "we", "couple", "married", "partners" → likely 2 people
+   - Look for "friends", "squad", "crew", "trio" → likely 3+ people
+   - "&" or "and" in name field → likely 2+ people
+   - Single name like "John Smith" → 1 person
+
+Return ONLY the name(s). No quotes, no explanation, just the name(s) or "there".
+
+Examples:
+Input: @johnsmith, "John Smith", "Travel blogger"
+Output: John
+
+Input: @thejohnsons, "John & Sarah", "Married couple traveling"
+Output: John and Sarah
+
+Input: @travelsquad, "The Squad", "We're Mike, Lisa, and Tom exploring"
+Output: Mike, Lisa, and Tom
+
+Input: @nikefitness, "Nike Fitness", "Official Nike account"
+Output: Nike Fitness
+
+Input: @randomuser123, "", ""
+Output: there
+"""
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a precise data extraction assistant. Return only the requested format with no additional text."
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            temperature=0.3,
+            max_tokens=50
+        )
+        
+        first_names = response.choices[0].message.content.strip()
+        
+        # Remove any quotes that might have been added
+        first_names = first_names.strip('"').strip("'")
+        
+        # If empty or just punctuation, use fallback
+        if not first_names or first_names in ['', 'none', 'unknown', 'N/A']:
+            first_names = "there"
+        
+        print(f"[FIRST_NAME] @{username} → '{first_names}'")
+        
+        return first_names
+        
+    except Exception as e:
+        print(f"[FIRST_NAME] Error for @{username}: {e}")
+        return "there"
+
 def send_to_hubspot(contact_id: str, lead_score: float, section_scores: Dict, score_reasoning: str, 
-                    creator_profile: Dict, content_analyses: List[Dict], lead_analysis: Dict = None):
+                       creator_profile: Dict, content_analyses: List[Dict], lead_analysis: Dict = None,
+                       first_name: str = "there"):
     """Send results to HubSpot with validation"""
     content_summaries = [f"Content {idx} ({item['type']}): {item['summary']}" 
                         for idx, item in enumerate(content_analyses, 1)]
@@ -1491,6 +1598,7 @@ def send_to_hubspot(contact_id: str, lead_score: float, section_scores: Dict, sc
     
     payload = {
         "contact_id": contact_id,
+        "first_name": first_name,
         "lead_score": lead_score,
         "manual_score": manual_score,  # NEW: Score without follower/engagement adjustments
         "follower_boost_applied": follower_boost,  # NEW: Amount of follower boost
@@ -1600,6 +1708,18 @@ def process_creator_profile(self, contact_id: str, profile_url: str, bio: str = 
         
         # Step 4: Create profile snapshot
         self.update_state(state='PROGRESS', meta={'stage': 'Creating profile snapshot'})
+
+        # Step 4.5: Extract first name from profile
+        self.update_state(state='PROGRESS', meta={'stage': 'Extracting first name'})
+        
+        # Get profile data
+        ig_username = social_data.get('profile', {}).get('username', '')
+        ig_full_name = social_data.get('profile', {}).get('full_name', '')
+        ig_bio = bio if bio else social_data.get('profile', {}).get('biography', '')
+        
+        # Extract first name(s)
+        first_name = extract_first_names_from_instagram_profile(ig_username, ig_full_name, ig_bio)
+        print(f"[FIRST_NAME] Extracted: '{first_name}'")
         
         # Extract profile data for snapshot - use provided data first, fallback to InsightIQ
         profile_info = social_data.get('data', [{}])[0].get('profile', {})
@@ -1633,6 +1753,7 @@ def process_creator_profile(self, contact_id: str, profile_url: str, bio: str = 
                 score_reasoning=f"Pre-screen rejected: {pre_screen_result.get('reasoning')}",
                 creator_profile={'content_category': 'Pre-screened out'},
                 content_analyses=[]
+                first_name=first_name
             )
             return {
                 "status": "success",
@@ -1819,6 +1940,7 @@ def process_creator_profile(self, contact_id: str, profile_url: str, bio: str = 
             creator_profile,
             content_analyses,
             lead_analysis  # NEW: Pass full analysis for two-tier fields
+            first_name=first_name
         )
         
         # Track processing duration
@@ -1932,6 +2054,7 @@ def rescore_single_profile(self, contact_id: str):
             creator_profile=creator_profile,
             content_analyses=content_analyses,
             lead_analysis=lead_analysis  # NEW: Pass full analysis
+            first_name=first_name
         )
         
         print(f"[RESCORE] ✓ Successfully re-scored {contact_id}: {lead_analysis['lead_score']:.3f}")
