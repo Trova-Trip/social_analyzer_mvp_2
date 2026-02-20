@@ -2304,33 +2304,13 @@ def discover_instagram_profiles(user_filters=None, job_id=None):
 
 @celery_app.task(name='tasks.discover_patreon_profiles')
 def discover_patreon_profiles(user_filters=None, job_id=None):
-    """
-    Run Patreon profile discovery via Apify scraper
-    
-    NOW INCLUDES:
-    - Better handling of partial results  
-    - Social graph building (crawl linked websites)
-    - Apollo.io email enrichment
-    """
+    """Run Patreon profile discovery via Apify scraper with enrichment"""
     if job_id is None:
         job_id = discover_patreon_profiles.request.id
     
     try:
-        from app import r
-        
-        # Update status
-        r.setex(
-            f'discovery_job:{job_id}',
-            86400,
-            json.dumps({
-                'job_id': job_id,
-                'platform': 'patreon',
-                'status': 'discovering',
-                'profiles_found': 0,
-                'new_contacts_created': 0,
-                'duplicates_skipped': 0
-            })
-        )
+        # Use the update_discovery_job_status helper that already exists
+        update_discovery_job_status(job_id, status='discovering')
         
         if not APIFY_API_TOKEN:
             raise ValueError("APIFY_API_TOKEN must be set in environment")
@@ -2349,7 +2329,6 @@ def discover_patreon_profiles(user_filters=None, job_id=None):
         
         client = ApifyClient(APIFY_API_TOKEN)
         
-        # Prepare the Actor input
         run_input = {
             "searchQueries": search_keywords,
             "maxRequestsPerCrawl": max_results,
@@ -2367,14 +2346,14 @@ def discover_patreon_profiles(user_filters=None, job_id=None):
         
         print(f"Apify run complete: {run['id']}")
         
-        # Fetch results from the dataset
+        # Fetch results
         all_items = []
         for item in client.dataset(run["defaultDatasetId"]).iterate_items():
             all_items.append(item)
         
         print(f"Apify returned {len(all_items)} total items from dataset")
         
-        # Filter out NSFW profiles
+        # Filter NSFW
         profiles = []
         nsfw_count = 0
         
@@ -2387,27 +2366,20 @@ def discover_patreon_profiles(user_filters=None, job_id=None):
         
         print(f"After NSFW filtering: {len(profiles)} profiles (excluded {nsfw_count} NSFW)")
         
-        # Handle case where no profiles found
+        # Handle no profiles
         if len(profiles) == 0:
             if len(all_items) == 0:
-                warning_msg = "Apify scraper returned 0 results. Patreon may be blocking requests, or no creators match your keywords. Try different keywords or higher max_results."
+                warning_msg = "Apify scraper returned 0 results. Patreon may be blocking requests. Try different keywords or higher max_results."
             else:
-                warning_msg = f"All {len(all_items)} profiles were NSFW and filtered out. Try different keywords."
+                warning_msg = f"All {len(all_items)} profiles were NSFW. Try different keywords."
             
             print(f"Warning: {warning_msg}")
-            
-            r.setex(
-                f'discovery_job:{job_id}',
-                86400,
-                json.dumps({
-                    'job_id': job_id,
-                    'platform': 'patreon',
-                    'status': 'completed',
-                    'profiles_found': 0,
-                    'new_contacts_created': 0,
-                    'duplicates_skipped': 0,
-                    'warning': warning_msg
-                })
+            update_discovery_job_status(
+                job_id, 
+                status='completed', 
+                profiles_found=0, 
+                new_contacts_created=0, 
+                duplicates_skipped=0
             )
             
             return {
@@ -2420,52 +2392,22 @@ def discover_patreon_profiles(user_filters=None, job_id=None):
         
         print(f"Patreon discovery complete: {len(profiles)} valid profiles found")
         
-        # Update status for enrichment
-        r.setex(
-            f'discovery_job:{job_id}',
-            86400,
-            json.dumps({
-                'job_id': job_id,
-                'platform': 'patreon',
-                'status': 'enriching',
-                'profiles_found': len(profiles),
-                'new_contacts_created': 0,
-                'duplicates_skipped': 0
-            })
-        )
-        
-        # Enhanced enrichment (crawls Patreon pages + websites + Apollo)
+        # Enrichment
+        update_discovery_job_status(job_id, status='enriching', profiles_found=len(profiles))
         enriched_profiles = enrich_patreon_profiles_enhanced(profiles, job_id)
         
-        # Standardize and import to HubSpot
-        r.setex(
-            f'discovery_job:{job_id}',
-            86400,
-            json.dumps({
-                'job_id': job_id,
-                'platform': 'patreon',
-                'status': 'importing',
-                'profiles_found': len(profiles),
-                'new_contacts_created': 0,
-                'duplicates_skipped': 0
-            })
-        )
-        
-        standardized_profiles = standardize_patreon_profiles_improved(enriched_profiles)
+        # Import to HubSpot
+        update_discovery_job_status(job_id, status='importing')
+        standardized_profiles = standardize_patreon_profiles(enriched_profiles)
         import_results = import_profiles_to_hubspot(standardized_profiles, job_id)
         
         # Final status
-        r.setex(
-            f'discovery_job:{job_id}',
-            86400,
-            json.dumps({
-                'job_id': job_id,
-                'platform': 'patreon',
-                'status': 'completed',
-                'profiles_found': len(profiles),
-                'new_contacts_created': import_results['created'],
-                'duplicates_skipped': import_results['skipped']
-            })
+        update_discovery_job_status(
+            job_id,
+            status='completed',
+            profiles_found=len(profiles),
+            new_contacts_created=import_results['created'],
+            duplicates_skipped=import_results['skipped']
         )
         
         print(f"Job {job_id} completed: {import_results['created']} created, {import_results['skipped']} skipped")
@@ -2481,27 +2423,8 @@ def discover_patreon_profiles(user_filters=None, job_id=None):
         print(f"Patreon discovery failed: {e}")
         import traceback
         traceback.print_exc()
-        
-        try:
-            from app import r
-            r.setex(
-                f'discovery_job:{job_id}',
-                86400,
-                json.dumps({
-                    'job_id': job_id,
-                    'platform': 'patreon',
-                    'status': 'failed',
-                    'error': str(e),
-                    'profiles_found': 0,
-                    'new_contacts_created': 0,
-                    'duplicates_skipped': 0
-                })
-            )
-        except:
-            pass
-        
+        update_discovery_job_status(job_id, status='failed', error=str(e))
         raise
-
 
 def standardize_patreon_profiles_improved(raw_profiles: List[Dict]) -> List[Dict]:
     """
