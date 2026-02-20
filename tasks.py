@@ -2309,7 +2309,6 @@ def discover_patreon_profiles(user_filters=None, job_id=None):
         job_id = discover_patreon_profiles.request.id
     
     try:
-        # Use the update_discovery_job_status helper that already exists
         update_discovery_job_status(job_id, status='discovering')
         
         if not APIFY_API_TOKEN:
@@ -2329,19 +2328,42 @@ def discover_patreon_profiles(user_filters=None, job_id=None):
         
         client = ApifyClient(APIFY_API_TOKEN)
         
+        # IMPROVED CONFIGURATION - Less restrictive filtering
         run_input = {
             "searchQueries": search_keywords,
             "maxRequestsPerCrawl": max_results,
+            
+            # Proxy settings
             "proxyConfiguration": {
                 "useApifyProxy": True,
                 "apifyProxyGroups": ["RESIDENTIAL"],
             },
+            
+            # Performance settings
             "maxConcurrency": 1,
             "maxRequestRetries": 5,
             "requestHandlerTimeoutSecs": 180,
+            
+            # NEW: Data extraction settings - save MORE profiles
+            "includeCreatorDetails": True,  # Get all creator info
+            "includePostCount": True,       # Include post count
+            "includePatronCount": True,     # Include patron count
+            "includeSocialLinks": True,      # Include social media links
+            
+            # NEW: Filtering settings - be LESS restrictive
+            "minPatrons": 0,                # Save profiles with ANY number of patrons (even 0)
+            "skipWithoutEmail": False,      # DON'T skip profiles without email
+            "skipWithoutSocialLinks": False, # DON'T skip profiles without social links
+            "skipNSFW": True,               # Still skip NSFW
+            
+            # NEW: Output settings
+            "saveFullHTML": False,          # Don't save HTML (saves memory)
+            "debugMode": True,              # Enable debug logging to see what's filtered
         }
         
         print("Starting Apify scraper (this may take a few minutes)...")
+        print(f"Config: includeAll=true, minPatrons=0, skipFilters=disabled")
+        
         run = client.actor("mJiXU9PT4eLHuY0pi").call(run_input=run_input)
         
         print(f"Apify run complete: {run['id']}")
@@ -2353,7 +2375,7 @@ def discover_patreon_profiles(user_filters=None, job_id=None):
         
         print(f"Apify returned {len(all_items)} total items from dataset")
         
-        # Filter NSFW
+        # Filter NSFW (do this ourselves instead of relying on scraper)
         profiles = []
         nsfw_count = 0
         
@@ -2369,18 +2391,12 @@ def discover_patreon_profiles(user_filters=None, job_id=None):
         # Handle no profiles
         if len(profiles) == 0:
             if len(all_items) == 0:
-                warning_msg = "Apify scraper returned 0 results. Patreon may be blocking requests. Try different keywords or higher max_results."
+                warning_msg = "Apify scraper returned 0 results. Possible reasons: (1) Patreon blocking requests, (2) No creators match keywords, (3) Try different keywords or higher max_results (100-500)."
             else:
-                warning_msg = f"All {len(all_items)} profiles were NSFW. Try different keywords."
+                warning_msg = f"All {len(all_items)} profiles were NSFW. Try different keywords or broader search."
             
             print(f"Warning: {warning_msg}")
-            update_discovery_job_status(
-                job_id, 
-                status='completed', 
-                profiles_found=0, 
-                new_contacts_created=0, 
-                duplicates_skipped=0
-            )
+            update_discovery_job_status(job_id, status='completed', profiles_found=0, new_contacts_created=0, duplicates_skipped=0)
             
             return {
                 'status': 'completed',
