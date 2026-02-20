@@ -3181,9 +3181,12 @@ def extract_member_count_from_text(text: str) -> int:
 def enrich_patreon_profiles_enhanced(raw_profiles: List[Dict], job_id: str) -> List[Dict]:
     """
     Enhanced Patreon enrichment:
-    1. Crawls each Patreon page for linked websites
-    2. Builds social graph from those websites  
-    3. Uses Apollo.io with discovered domains
+    1. Crawls the Patreon page for personal websites
+    2. For each social media link (Instagram, YouTube, Twitter):
+       - Scrape the profile page for email addresses
+       - Look for bio links (linktree/beacons)
+       - Follow those to find more emails
+    3. Use Apollo.io with any discovered website domains
     """
     print(f"Enhanced enrichment for {len(raw_profiles)} Patreon profiles...")
     
@@ -3191,6 +3194,7 @@ def enrich_patreon_profiles_enhanced(raw_profiles: List[Dict], job_id: str) -> L
     apollo_client = ApolloEnrichment(APOLLO_API_KEY) if APOLLO_API_KEY else None
     
     patreon_crawl_count = 0
+    social_profile_crawl_count = 0
     social_graph_count = 0
     apollo_count = 0
     
@@ -3209,85 +3213,261 @@ def enrich_patreon_profiles_enhanced(raw_profiles: List[Dict], job_id: str) -> L
                 'tiktok': profile.get('tiktok')
             }
             
-            if not patreon_url:
-                continue
-            
-            # Step 1: Crawl Patreon page for personal websites
-            print(f"[PATREON_CRAWL] Scraping {patreon_url}...")
-            
-            try:
-                response = requests.get(patreon_url, timeout=10, headers={
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-                })
+            # Step 1: Crawl the Patreon page for personal websites
+            if patreon_url:
+                print(f"[PATREON_CRAWL] Scraping {patreon_url}...")
                 
-                if response.ok:
-                    soup = BeautifulSoup(response.text, 'html.parser')
-                    links = soup.find_all('a', href=True)
+                try:
+                    response = requests.get(patreon_url, timeout=10, headers={
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                    })
                     
-                    skip_hosts = ['patreon.com', 'youtube.com', 'instagram.com', 
-                                 'twitter.com', 'x.com', 'facebook.com', 'tiktok.com',
-                                 'spotify.com', 'apple.com', 'google.com']
-                    
-                    personal_websites = []
-                    
-                    for link in links:
-                        href = link['href']
-                        if href.startswith('http') and not any(skip in href.lower() for skip in skip_hosts):
-                            personal_websites.append(href)
-                    
-                    # Take first personal website
-                    if personal_websites:
-                        website_url = personal_websites[0]
-                        print(f"[PATREON_CRAWL] Found website: {website_url}")
-                        profile['personal_website'] = website_url
-                        patreon_crawl_count += 1
+                    if response.ok:
+                        soup = BeautifulSoup(response.text, 'html.parser')
+                        links = soup.find_all('a', href=True)
                         
-                        # Step 2: Build social graph from website
-                        graph_data = social_graph_builder.build_graph(website_url, creator_name)
+                        skip_hosts = ['patreon.com', 'youtube.com', 'instagram.com', 
+                                     'twitter.com', 'x.com', 'facebook.com', 'tiktok.com',
+                                     'spotify.com', 'apple.com', 'google.com']
                         
-                        # Add emails
-                        if graph_data['emails']:
-                            profile['social_graph_email'] = graph_data['emails'][0]
-                            social_graph_count += 1
-                            print(f"[SOCIAL_GRAPH] Found email for {creator_name}")
+                        personal_websites = []
                         
-                        # Merge social links
-                        for platform, url in graph_data['social_links'].items():
-                            if url and not profile['social_links'].get(platform):
-                                profile['social_links'][platform] = url
+                        for link in links:
+                            href = link['href']
+                            if href.startswith('http') and not any(skip in href.lower() for skip in skip_hosts):
+                                personal_websites.append(href)
                         
-                        # Step 3: Try Apollo with the domain
-                        if apollo_client and not profile.get('social_graph_email'):
-                            domain = apollo_client.extract_domain(website_url)
+                        if personal_websites:
+                            website_url = personal_websites[0]
+                            print(f"[PATREON_CRAWL] Found website: {website_url}")
+                            profile['personal_website'] = website_url
+                            patreon_crawl_count += 1
                             
-                            if domain and apollo_client.is_enrichable_domain(domain):
-                                apollo_data = apollo_client.person_match(
-                                    name=creator_name,
-                                    domain=domain
-                                )
+                            # Build social graph from personal website
+                            graph_data = social_graph_builder.build_graph(website_url, creator_name)
+                            
+                            if graph_data['emails']:
+                                profile['social_graph_email'] = graph_data['emails'][0]
+                                social_graph_count += 1
+                                print(f"[SOCIAL_GRAPH] Found email for {creator_name}")
+                            
+                            # Merge social links
+                            for platform, url in graph_data['social_links'].items():
+                                if url and not profile['social_links'].get(platform):
+                                    profile['social_links'][platform] = url
+                    
+                    time.sleep(0.5)
+                    
+                except Exception as e:
+                    print(f"[PATREON_CRAWL] Error crawling {patreon_url}: {e}")
+            
+            # Step 2: NEW - Scrape social media profiles for emails
+            # If we don't have an email yet, try scraping their social profiles
+            if not profile.get('social_graph_email') and not profile.get('apollo_email'):
+                
+                # Try Instagram first (often has email in bio or bio link)
+                instagram_url = profile['social_links'].get('instagram')
+                if instagram_url:
+                    print(f"[INSTAGRAM_CRAWL] Scraping {instagram_url} for email...")
+                    try:
+                        response = requests.get(instagram_url, timeout=10, headers={
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                        })
+                        
+                        if response.ok:
+                            soup = BeautifulSoup(response.text, 'html.parser')
+                            
+                            # Look for emails in meta tags
+                            email_pattern = r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
+                            text = soup.get_text()
+                            emails = re.findall(email_pattern, text)
+                            
+                            # Filter out image emails
+                            valid_emails = [e for e in emails if not any(x in e.lower() for x in 
+                                          ['.png', '.jpg', '.gif', 'cdninstagram', 'fbcdn'])]
+                            
+                            if valid_emails:
+                                profile['social_graph_email'] = valid_emails[0]
+                                social_profile_crawl_count += 1
+                                social_graph_count += 1
+                                print(f"[INSTAGRAM_CRAWL] Found email: {valid_emails[0]}")
+                            
+                            # Look for bio links (linktree, beacons, etc.)
+                            all_links = soup.find_all('a', href=True)
+                            for link in all_links:
+                                href = link['href']
                                 
-                                if apollo_data and apollo_data.get('email'):
-                                    profile['apollo_email'] = apollo_data['email']
-                                    profile['apollo_first_name'] = apollo_data.get('first_name')
-                                    profile['apollo_last_name'] = apollo_data.get('last_name')
-                                    profile['apollo_title'] = apollo_data.get('title')
-                                    profile['apollo_phone'] = apollo_data.get('phone')
-                                    profile['apollo_linkedin'] = apollo_data.get('linkedin')
-                                    apollo_count += 1
-                                    print(f"[APOLLO] Found email for {creator_name}")
+                                # Check if it's a link aggregator
+                                if any(agg in href.lower() for agg in 
+                                      ['linktr.ee', 'beacons.ai', 'bio.link', 'linkin.bio', 'carrd.co']):
+                                    print(f"[INSTAGRAM_CRAWL] Found bio link: {href}")
+                                    
+                                    # Crawl the bio link
+                                    bio_data = social_graph_builder.build_graph(href, creator_name)
+                                    
+                                    if bio_data['emails'] and not profile.get('social_graph_email'):
+                                        profile['social_graph_email'] = bio_data['emails'][0]
+                                        social_profile_crawl_count += 1
+                                        social_graph_count += 1
+                                        print(f"[BIO_LINK] Found email: {bio_data['emails'][0]}")
+                                    
+                                    # Get personal website from bio link
+                                    if bio_data.get('personal_website'):
+                                        profile['personal_website'] = bio_data['personal_website']
+                                    
+                                    break  # Found bio link, stop looking
                         
                         time.sleep(0.5)
+                        
+                    except Exception as e:
+                        print(f"[INSTAGRAM_CRAWL] Error: {e}")
                 
-            except Exception as e:
-                print(f"[PATREON_CRAWL] Error crawling {patreon_url}: {e}")
+                # Try YouTube if still no email
+                if not profile.get('social_graph_email'):
+                    youtube_url = profile['social_links'].get('youtube')
+                    if youtube_url:
+                        print(f"[YOUTUBE_CRAWL] Scraping {youtube_url} for email...")
+                        try:
+                            response = requests.get(youtube_url, timeout=10, headers={
+                                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                            })
+                            
+                            if response.ok:
+                                soup = BeautifulSoup(response.text, 'html.parser')
+                                text = soup.get_text()
+                                
+                                # Look for emails
+                                email_pattern = r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
+                                emails = re.findall(email_pattern, text)
+                                
+                                valid_emails = [e for e in emails if not any(x in e.lower() for x in 
+                                              ['.png', '.jpg', '.gif', 'youtube', 'google'])]
+                                
+                                if valid_emails:
+                                    profile['social_graph_email'] = valid_emails[0]
+                                    social_profile_crawl_count += 1
+                                    social_graph_count += 1
+                                    print(f"[YOUTUBE_CRAWL] Found email: {valid_emails[0]}")
+                                
+                                # Look for links in description
+                                all_links = soup.find_all('a', href=True)
+                                for link in all_links:
+                                    href = link['href']
+                                    
+                                    # Check for personal website or bio link
+                                    if href.startswith('http'):
+                                        # Skip YouTube/Google links
+                                        if any(skip in href.lower() for skip in ['youtube.com', 'google.com', 'youtu.be']):
+                                            continue
+                                        
+                                        # Check if it's a bio link
+                                        if any(agg in href.lower() for agg in 
+                                              ['linktr.ee', 'beacons.ai', 'bio.link', 'carrd.co']):
+                                            bio_data = social_graph_builder.build_graph(href, creator_name)
+                                            
+                                            if bio_data['emails'] and not profile.get('social_graph_email'):
+                                                profile['social_graph_email'] = bio_data['emails'][0]
+                                                social_profile_crawl_count += 1
+                                                social_graph_count += 1
+                                                print(f"[YOUTUBE_BIO_LINK] Found email: {bio_data['emails'][0]}")
+                                            
+                                            if bio_data.get('personal_website'):
+                                                profile['personal_website'] = bio_data['personal_website']
+                                            
+                                            break
+                                        
+                                        # Or it's a personal website
+                                        elif not profile.get('personal_website'):
+                                            profile['personal_website'] = href
+                                            print(f"[YOUTUBE_CRAWL] Found website: {href}")
+                            
+                            time.sleep(0.5)
+                            
+                        except Exception as e:
+                            print(f"[YOUTUBE_CRAWL] Error: {e}")
+                
+                # Try Twitter if still no email
+                if not profile.get('social_graph_email'):
+                    twitter_url = profile['social_links'].get('twitter')
+                    if twitter_url:
+                        print(f"[TWITTER_CRAWL] Scraping {twitter_url} for email...")
+                        try:
+                            response = requests.get(twitter_url, timeout=10, headers={
+                                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                            })
+                            
+                            if response.ok:
+                                soup = BeautifulSoup(response.text, 'html.parser')
+                                text = soup.get_text()
+                                
+                                # Look for emails
+                                email_pattern = r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
+                                emails = re.findall(email_pattern, text)
+                                
+                                valid_emails = [e for e in emails if not any(x in e.lower() for x in 
+                                              ['.png', '.jpg', 'twitter', 'x.com'])]
+                                
+                                if valid_emails:
+                                    profile['social_graph_email'] = valid_emails[0]
+                                    social_profile_crawl_count += 1
+                                    social_graph_count += 1
+                                    print(f"[TWITTER_CRAWL] Found email: {valid_emails[0]}")
+                                
+                                # Look for bio links
+                                all_links = soup.find_all('a', href=True)
+                                for link in all_links:
+                                    href = link['href']
+                                    
+                                    if any(agg in href.lower() for agg in 
+                                          ['linktr.ee', 'beacons.ai', 'bio.link', 'carrd.co']):
+                                        bio_data = social_graph_builder.build_graph(href, creator_name)
+                                        
+                                        if bio_data['emails'] and not profile.get('social_graph_email'):
+                                            profile['social_graph_email'] = bio_data['emails'][0]
+                                            social_profile_crawl_count += 1
+                                            social_graph_count += 1
+                                            print(f"[TWITTER_BIO_LINK] Found email: {bio_data['emails'][0]}")
+                                        
+                                        if bio_data.get('personal_website'):
+                                            profile['personal_website'] = bio_data['personal_website']
+                                        
+                                        break
+                            
+                            time.sleep(0.5)
+                            
+                        except Exception as e:
+                            print(f"[TWITTER_CRAWL] Error: {e}")
+            
+            # Step 3: Try Apollo.io if we found a personal website but still no email
+            if apollo_client and not profile.get('social_graph_email') and profile.get('personal_website'):
+                domain = apollo_client.extract_domain(profile['personal_website'])
+                
+                if domain and apollo_client.is_enrichable_domain(domain):
+                    apollo_data = apollo_client.person_match(
+                        name=creator_name,
+                        domain=domain
+                    )
+                    
+                    if apollo_data and apollo_data.get('email'):
+                        profile['apollo_email'] = apollo_data['email']
+                        profile['apollo_first_name'] = apollo_data.get('first_name')
+                        profile['apollo_last_name'] = apollo_data.get('last_name')
+                        profile['apollo_title'] = apollo_data.get('title')
+                        profile['apollo_phone'] = apollo_data.get('phone')
+                        profile['apollo_linkedin'] = apollo_data.get('linkedin')
+                        apollo_count += 1
+                        print(f"[APOLLO] Found email for {creator_name}")
+                
+                time.sleep(0.5)
         
         except Exception as e:
             print(f"Error in enhanced enrichment for {profile.get('name')}: {e}")
             continue
     
     print(f"Enhanced enrichment complete:")
-    print(f"  - {patreon_crawl_count} websites found")
-    print(f"  - {social_graph_count} emails from social graph")
+    print(f"  - {patreon_crawl_count} personal websites from Patreon pages")
+    print(f"  - {social_profile_crawl_count} social profiles crawled (Instagram/YouTube/Twitter)")
+    print(f"  - {social_graph_count} total emails from social graph")
     print(f"  - {apollo_count} emails from Apollo")
     
     return raw_profiles
