@@ -2463,33 +2463,49 @@ def discover_instagram_profiles(user_filters=None, job_id=None):
         update_discovery_job_status(job_id, status='failed', error=str(e))
         raise
 
+
+# ============================================================================
+# ENVIRONMENT - COMMUNITY DISCOVERY & ENRICHMENT
+# ============================================================================
+
+MILLIONVERIFIER_API_KEY = os.getenv('MILLIONVERIFIER_API_KEY')
+
+# ============================================================================
+# DISCOVERY TASK: PATREON
+# ============================================================================
+
 @celery_app.task(name='tasks.discover_patreon_profiles')
 def discover_patreon_profiles(user_filters=None, job_id=None):
-    """Run Patreon profile discovery via Apify scraper with enrichment"""
+    """
+    Run Patreon profile discovery via Apify scraper with full enrichment pipeline.
+
+    Pipeline:
+      1. Apify Patreon scraper → raw profiles
+      2. NSFW filter
+      3. enrich_profiles_full_pipeline (social graph → Apollo → Leads Finder → MillionVerifier)
+      4. standardize_patreon_profiles → HubSpot import
+    """
     if job_id is None:
         job_id = discover_patreon_profiles.request.id
-    
+
     try:
         update_discovery_job_status(job_id, status='discovering')
-        
+
         if not APIFY_API_TOKEN:
             raise ValueError("APIFY_API_TOKEN must be set in environment")
-        
+
         user_filters = user_filters or {}
         search_keywords = user_filters.get('search_keywords', [])
         max_results = user_filters.get('max_results', 100)
-        
+
         if not search_keywords:
             raise ValueError("search_keywords required for Patreon discovery")
-        
-        print(f"Starting Patreon discovery with keywords: {search_keywords}, max: {max_results}")
-        
-        # Run Apify scraper
+
+        print(f"Starting Patreon discovery: keywords={search_keywords}, max={max_results}")
+
         from apify_client import ApifyClient
-        
-        client = ApifyClient(APIFY_API_TOKEN)
-        
-        # SIMPLE CONFIG - Let the scraper use its defaults
+        apify = ApifyClient(APIFY_API_TOKEN)
+
         run_input = {
             "searchQueries": search_keywords,
             "maxRequestsPerCrawl": max_results,
@@ -2501,79 +2517,76 @@ def discover_patreon_profiles(user_filters=None, job_id=None):
             "maxRequestRetries": 5,
             "requestHandlerTimeoutSecs": 180,
         }
-        
-        print("Starting Apify scraper (this may take a few minutes)...")
-        run = client.actor("mJiXU9PT4eLHuY0pi").call(run_input=run_input)
-        
+
+        print("Starting Apify Patreon scraper (may take a few minutes)...")
+        run = apify.actor("mJiXU9PT4eLHuY0pi").call(run_input=run_input)
         print(f"Apify run complete: {run['id']}")
-        
-        # Fetch results
-        all_items = []
-        for item in client.dataset(run["defaultDatasetId"]).iterate_items():
-            all_items.append(item)
-        
-        print(f"Apify returned {len(all_items)} total items from dataset")
-        
+
+        all_items = list(apify.dataset(run["defaultDatasetId"]).iterate_items())
+        print(f"Apify returned {len(all_items)} total items")
+
         # Filter NSFW
         profiles = []
         nsfw_count = 0
-        
         for item in all_items:
             if item.get('is_nsfw', 0) == 1:
-                print(f"Skipping NSFW profile: {item.get('name', 'Unknown')}")
                 nsfw_count += 1
                 continue
             profiles.append(item)
-        
-        print(f"After NSFW filtering: {len(profiles)} profiles (excluded {nsfw_count} NSFW)")
-        
-        # Handle no profiles
-        if len(profiles) == 0:
-            if len(all_items) == 0:
-                warning_msg = "Apify scraper returned 0 results. The scraper typically has ~5% yield. Try max_results of 100-500 to get 5-25 actual profiles."
-            else:
-                warning_msg = f"All {len(all_items)} profiles were NSFW. Try different keywords."
-            
+
+        print(f"After NSFW filter: {len(profiles)} profiles (excluded {nsfw_count} NSFW)")
+
+        if not profiles:
+            warning_msg = (
+                "Apify scraper returned 0 results. The scraper typically has ~5% yield. "
+                "Try max_results of 100-500 to get 5-25 actual profiles."
+                if not all_items else
+                f"All {len(all_items)} profiles were NSFW. Try different keywords."
+            )
             print(f"Warning: {warning_msg}")
-            update_discovery_job_status(job_id, status='completed', profiles_found=0, new_contacts_created=0, duplicates_skipped=0)
-            
-            return {
-                'status': 'completed',
-                'profiles_found': 0,
-                'new_contacts': 0,
-                'duplicates': 0,
-                'warning': warning_msg
-            }
-        
-        print(f"Patreon discovery complete: {len(profiles)} valid profiles found")
-        
-        # Enrichment
+            update_discovery_job_status(job_id, status='completed', profiles_found=0,
+                                        new_contacts_created=0, duplicates_skipped=0)
+            return {'status': 'completed', 'profiles_found': 0,
+                    'new_contacts': 0, 'duplicates': 0, 'warning': warning_msg}
+
+        # Normalise raw Patreon fields into the common internal schema used by enrichment:
+        #   url, creator_name, personal_website, instagram_url, youtube_url,
+        #   twitter_url, facebook_url, tiktok_url, twitch_url
+        for p in profiles:
+            p.setdefault('instagram_url', p.get('instagram'))
+            p.setdefault('youtube_url',   p.get('youtube'))
+            p.setdefault('twitter_url',   p.get('twitter'))
+            p.setdefault('facebook_url',  p.get('facebook'))
+            p.setdefault('tiktok_url',    p.get('tiktok'))
+            p.setdefault('twitch_url',    p.get('twitch'))
+
+        print(f"Patreon discovery complete: {len(profiles)} profiles")
         update_discovery_job_status(job_id, status='enriching', profiles_found=len(profiles))
-        enriched_profiles = enrich_patreon_profiles_enhanced(profiles, job_id)
-        
-        # Import to HubSpot
+
+        # Full enrichment pipeline
+        enriched = enrich_profiles_full_pipeline(profiles, job_id, platform='patreon')
+
+        # Standardise → HubSpot
         update_discovery_job_status(job_id, status='importing')
-        standardized_profiles = standardize_patreon_profiles(enriched_profiles)
-        import_results = import_profiles_to_hubspot(standardized_profiles, job_id)
-        
-        # Final status
+        standardized = standardize_patreon_profiles(enriched)
+        import_results = import_profiles_to_hubspot(standardized, job_id)
+
         update_discovery_job_status(
-            job_id,
-            status='completed',
+            job_id, status='completed',
             profiles_found=len(profiles),
             new_contacts_created=import_results['created'],
-            duplicates_skipped=import_results['skipped']
+            duplicates_skipped=import_results['skipped'],
         )
-        
-        print(f"Job {job_id} completed: {import_results['created']} created, {import_results['skipped']} skipped")
-        
+        print(f"Patreon job {job_id} done: {import_results['created']} created, "
+              f"{import_results['skipped']} skipped")
+
         return {
             'status': 'completed',
             'profiles_found': len(profiles),
             'new_contacts': import_results['created'],
-            'duplicates': import_results['skipped']
+            'duplicates': import_results['skipped'],
         }
-        
+
     except Exception as e:
         print(f"Patreon discovery failed: {e}")
         import traceback
@@ -2582,567 +2595,147 @@ def discover_patreon_profiles(user_filters=None, job_id=None):
         raise
 
 
-def standardize_patreon_profiles_improved(raw_profiles: List[Dict]) -> List[Dict]:
-    """
-    Convert Apify scraper results to standardized format for HubSpot
-    NOW INCLUDES social graph and Apollo data
-    """
-    standardized = []
-    
-    for i, profile in enumerate(raw_profiles):
-        try:
-            # Extract name parts
-            full_name = profile.get('creator_name') or profile.get('name', '')
-            
-            # Use Apollo name if available
-            if profile.get('apollo_first_name'):
-                full_name = f"{profile['apollo_first_name']} {profile.get('apollo_last_name', '')}".strip()
-            
-            # Patreon handle from URL
-            patreon_url = profile.get('url', '')
-            patreon_handle = patreon_url.split('/')[-1] if patreon_url else ''
-            
-            standardized_profile = {
-                # Core identity
-                'first_and_last_name': full_name,
-                'flagship_social_platform_handle': patreon_handle,
-                'patreon_link': patreon_url,
-                
-                # Bio/Description
-                'patreon_description': profile.get('about', ''),
-                
-                # Patreon-specific metrics
-                'patreon_patron_count': profile.get('patron_count', 0),
-                'patreon_paid_members': profile.get('paid_members', 0),
-                'patreon_total_members': profile.get('total_members', 0),
-                'patreon_post_count': profile.get('post_count', 0),
-                'patreon_earnings_per_month': profile.get('earnings_per_month', 0),
-                'patreon_creation_name': profile.get('creation_name', ''),
-                
-                # Email - prefer Apollo, fallback to social graph
-                'email': profile.get('apollo_email') or profile.get('social_graph_email'),
-                
-                # Phone - prefer Apollo
-                'phone': profile.get('apollo_phone'),
-                
-                # Social links (URLs from Patreon scraper + social graph)
-                'instagram_handle': profile.get('instagram') or profile.get('social_links', {}).get('instagram'),
-                'youtube_profile_link': profile.get('youtube') or profile.get('social_links', {}).get('youtube'),
-                'tiktok_handle': profile.get('tiktok') or profile.get('social_links', {}).get('tiktok'),
-                'facebook_profile_link': profile.get('facebook') or profile.get('social_links', {}).get('facebook'),
-                'twitch_url': profile.get('twitch') or profile.get('social_links', {}).get('twitch'),
-                'twitter_url': profile.get('social_links', {}).get('twitter'),
-                'linkedin_profile_url': profile.get('social_links', {}).get('linkedin'),
-                'discord_url': profile.get('social_links', {}).get('discord'),
-                
-                # Personal website from social graph
-                'personal_website': profile.get('personal_website'),
-                
-                # Apollo enrichment
-                'apollo_title': profile.get('apollo_title'),
-                'apollo_linkedin': profile.get('apollo_linkedin'),
-                'apollo_enriched': bool(profile.get('apollo_email')),
-                
-                # Metadata
-                'platform': 'patreon',
-                'discovery_source': 'apify_patreon_scraper'
-            }
-            
-            # Remove None/empty values
-            standardized_profile = {k: v for k, v in standardized_profile.items() 
-                                   if v is not None and v != '' and v != 0}
-            
-            standardized.append(standardized_profile)
-            
-        except Exception as e:
-            print(f"Failed to process Patreon profile #{i+1}: {e}")
-            continue
-    
-    print(f"Successfully processed {len(standardized)} Patreon profiles")
-    return standardized
 # ============================================================================
-# FACEBOOK GROUPS DISCOVERY + SOCIAL GRAPH + APOLLO ENRICHMENT
-# Add to tasks.py after Patreon discovery task
-# ============================================================================
-
-import re
-import requests
-from bs4 import BeautifulSoup
-from urllib.parse import urlparse
-from typing import Dict, List, Optional, Set
-
-# Add these to your config section:
-APOLLO_API_KEY = os.getenv('APOLLO_API_KEY')
-
-# ============================================================================
-# APOLLO.IO EMAIL ENRICHMENT
-# ============================================================================
-
-class ApolloEnrichment:
-    """Apollo.io API client for finding emails"""
-    
-    BASE_URL = "https://api.apollo.io/api/v1"
-    
-    # Skip these domains (social media, platforms)
-    SKIP_DOMAINS = [
-        "meetup.com", "eventbrite.com", "youtube.com", "youtu.be",
-        "reddit.com", "facebook.com", "instagram.com", "twitter.com",
-        "x.com", "linkedin.com", "patreon.com", "tiktok.com",
-        "google.com", "yelp.com", "substack.com", "discord.com",
-        "discord.gg", "github.com", "medium.com"
-    ]
-    
-    def __init__(self, api_key: str):
-        self.api_key = api_key
-    
-    def person_match(self, name: str = None, domain: str = None, 
-                    org_name: str = None, linkedin_url: str = None) -> Optional[Dict]:
-        """
-        Find email and profile info for a person
-        
-        Args:
-            name: Person's full name
-            domain: Website domain (e.g., "example.com")
-            org_name: Organization name
-            linkedin_url: LinkedIn profile URL
-        
-        Returns:
-            dict with email, phone, linkedin, title, location, etc.
-        """
-        if not self.api_key:
-            return None
-        
-        # Build request data
-        data = {'reveal_personal_emails': True}
-        if name:
-            data['name'] = name
-        if domain:
-            data['domain'] = domain
-        if org_name:
-            data['organization_name'] = org_name
-        if linkedin_url:
-            data['linkedin_url'] = linkedin_url
-        
-        try:
-            response = requests.post(
-                f"{self.BASE_URL}/people/match",
-                headers={
-                    'Content-Type': 'application/json',
-                    'x-api-key': self.api_key,
-                    'Cache-Control': 'no-cache'
-                },
-                json=data,
-                timeout=15
-            )
-            
-            if response.status_code == 429:
-                print("[APOLLO] Rate limited")
-                time.sleep(2)
-                return None
-            
-            if not response.ok:
-                print(f"[APOLLO] Error {response.status_code}")
-                return None
-            
-            result = response.json()
-            person = result.get('person', {})
-            
-            if not person:
-                return None
-            
-            # Extract phone number
-            phone_numbers = person.get('phone_numbers', [])
-            phone = phone_numbers[0].get('raw_number', '') if phone_numbers else ''
-            
-            # Build location
-            location_parts = [person.get('city'), person.get('state'), person.get('country')]
-            location = ', '.join(filter(None, location_parts))
-            
-            return {
-                'email': person.get('email', ''),
-                'first_name': person.get('first_name', ''),
-                'last_name': person.get('last_name', ''),
-                'full_name': person.get('name', ''),
-                'title': person.get('title', ''),
-                'linkedin': person.get('linkedin_url', ''),
-                'twitter': person.get('twitter_url', ''),
-                'facebook': person.get('facebook_url', ''),
-                'phone': phone,
-                'location': location,
-                'headline': person.get('headline', ''),
-                'organization': person.get('organization', {}).get('name', ''),
-                'org_phone': person.get('organization', {}).get('phone', '')
-            }
-            
-        except Exception as e:
-            print(f"[APOLLO] Error: {e}")
-            return None
-    
-    @staticmethod
-    def extract_domain(url: str) -> str:
-        """Extract domain from URL"""
-        try:
-            parsed = urlparse(url)
-            domain = parsed.netloc.replace('www.', '')
-            return domain
-        except:
-            return ""
-    
-    @staticmethod
-    def is_enrichable_domain(domain: str) -> bool:
-        """Check if domain should be enriched (not social media)"""
-        if not domain:
-            return False
-        return not any(skip in domain for skip in ApolloEnrichment.SKIP_DOMAINS)
-
-
-# ============================================================================
-# SOCIAL GRAPH BUILDER (Website Crawler + Link Aggregators)
-# ============================================================================
-
-class SocialGraphBuilder:
-    """
-    Crawls websites and link aggregators (Linktree, Beacons) to find:
-    - Emails
-    - Social media profiles (Instagram, YouTube, Twitter, LinkedIn, TikTok)
-    - Additional owned channels
-    """
-    
-    LINK_AGGREGATORS = [
-        'linktr.ee', 'beacons.ai', 'linkin.bio', 'linkpop.com',
-        'hoo.be', 'campsite.bio', 'lnk.bio', 'tap.bio', 'solo.to',
-        'bio.link', 'carrd.co'
-    ]
-    
-    SOCIAL_PATTERNS = {
-        'instagram': r'instagram\.com/([a-zA-Z0-9._]+)',
-        'youtube': r'youtube\.com/(c/|channel/|@)?([a-zA-Z0-9_-]+)',
-        'twitter': r'(twitter\.com|x\.com)/([a-zA-Z0-9_]+)',
-        'linkedin': r'linkedin\.com/in/([a-zA-Z0-9-]+)',
-        'tiktok': r'tiktok\.com/@([a-zA-Z0-9._]+)',
-        'facebook': r'facebook\.com/([a-zA-Z0-9.]+)',
-        'twitch': r'twitch\.tv/([a-zA-Z0-9_]+)',
-        'discord': r'discord\.(gg|com)/([a-zA-Z0-9]+)'
-    }
-    
-    def __init__(self):
-        self.session = requests.Session()
-        self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        })
-    
-    def build_graph(self, website_url: str, leader_name: str = None) -> Dict:
-        """
-        Build social graph from website
-        
-        Args:
-            website_url: URL to crawl
-            leader_name: Optional name to search for emails
-        
-        Returns:
-            dict with emails, social_links, and additional_urls
-        """
-        result = {
-            'emails': [],
-            'social_links': {},
-            'personal_website': None,
-            'linktree_url': None
-        }
-        
-        if not website_url:
-            return result
-        
-        try:
-            # Check if it's a link aggregator
-            is_aggregator = any(agg in website_url.lower() for agg in self.LINK_AGGREGATORS)
-            
-            if is_aggregator:
-                result['linktree_url'] = website_url
-                agg_data = self._scrape_link_aggregator(website_url)
-                result['social_links'].update(agg_data['social_links'])
-                result['emails'].extend(agg_data['emails'])
-                
-                # If aggregator has a personal website, crawl it too
-                if agg_data.get('personal_website'):
-                    result['personal_website'] = agg_data['personal_website']
-                    website_data = self._scrape_website(agg_data['personal_website'], leader_name)
-                    result['emails'].extend(website_data['emails'])
-                    result['social_links'].update(website_data['social_links'])
-            else:
-                # Regular website - scrape it
-                website_data = self._scrape_website(website_url, leader_name)
-                result['emails'].extend(website_data['emails'])
-                result['social_links'].update(website_data['social_links'])
-                
-                # Check if they link to a Linktree/Beacons
-                if website_data.get('linktree_url'):
-                    result['linktree_url'] = website_data['linktree_url']
-                    agg_data = self._scrape_link_aggregator(website_data['linktree_url'])
-                    result['social_links'].update(agg_data['social_links'])
-            
-            # Deduplicate emails
-            result['emails'] = list(set(result['emails']))
-            
-            return result
-            
-        except Exception as e:
-            print(f"[SOCIAL_GRAPH] Error building graph: {e}")
-            return result
-    
-    def _scrape_website(self, url: str, leader_name: str = None) -> Dict:
-        """Scrape a regular website for emails and social links"""
-        result = {
-            'emails': [],
-            'social_links': {},
-            'linktree_url': None
-        }
-        
-        try:
-            response = self.session.get(url, timeout=10, allow_redirects=True)
-            if not response.ok:
-                return result
-            
-            soup = BeautifulSoup(response.text, 'html.parser')
-            text = soup.get_text()
-            
-            # Extract emails
-            email_pattern = r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
-            emails = re.findall(email_pattern, text)
-            
-            # Filter out image/asset emails
-            blocked_patterns = ['.png', '.jpg', '.gif', '.jpeg', '.webp', '.svg',
-                              'sentry.io', 'example.com', 'cloudfront', 'amazonaws']
-            result['emails'] = [
-                email.lower() for email in emails
-                if not any(pattern in email.lower() for pattern in blocked_patterns)
-            ]
-            
-            # Extract obfuscated emails (name [at] domain [dot] com)
-            obfuscated_pattern = r'([a-zA-Z0-9._%+-]+)\s*(?:\[at\]|\(at\)|{at}|\bat\b)\s*([a-zA-Z0-9.-]+)\s*(?:\[dot\]|\(dot\)|{dot}|\.)\s*([a-zA-Z]{2,})'
-            obfuscated = re.findall(obfuscated_pattern, text, re.IGNORECASE)
-            for parts in obfuscated:
-                email = f"{parts[0]}@{parts[1]}.{parts[2]}".lower().replace(' ', '')
-                if '@' in email:
-                    result['emails'].append(email)
-            
-            # Extract mailto links
-            mailto_links = soup.find_all('a', href=re.compile(r'^mailto:'))
-            for link in mailto_links:
-                email = link['href'].replace('mailto:', '').split('?')[0].strip().lower()
-                if email and '@' in email:
-                    result['emails'].append(email)
-            
-            # Extract social links
-            all_links = soup.find_all('a', href=True)
-            for link in all_links:
-                href = link['href']
-                
-                # Check for link aggregators
-                if any(agg in href.lower() for agg in self.LINK_AGGREGATORS):
-                    result['linktree_url'] = href
-                
-                # Extract social media profiles
-                for platform, pattern in self.SOCIAL_PATTERNS.items():
-                    if platform in href.lower():
-                        match = re.search(pattern, href, re.IGNORECASE)
-                        if match:
-                            result['social_links'][platform] = href.split('?')[0]
-            
-            return result
-            
-        except Exception as e:
-            print(f"[SOCIAL_GRAPH] Error scraping website {url}: {e}")
-            return result
-    
-    def _scrape_link_aggregator(self, url: str) -> Dict:
-        """Scrape Linktree/Beacons for social links"""
-        result = {
-            'social_links': {},
-            'emails': [],
-            'personal_website': None
-        }
-        
-        try:
-            response = self.session.get(url, timeout=10, allow_redirects=True)
-            if not response.ok:
-                return result
-            
-            soup = BeautifulSoup(response.text, 'html.parser')
-            
-            # Extract all links
-            all_links = soup.find_all('a', href=True)
-            
-            skip_hosts = ['instagram.com', 'youtube.com', 'twitter.com', 'x.com',
-                         'facebook.com', 'tiktok.com', 'linkedin.com', 'twitch.tv',
-                         'patreon.com', 'spotify.com', 'apple.com', 'google.com']
-            
-            for link in all_links:
-                href = link['href']
-                
-                # Extract social media
-                for platform, pattern in self.SOCIAL_PATTERNS.items():
-                    if platform in href.lower():
-                        match = re.search(pattern, href, re.IGNORECASE)
-                        if match:
-                            result['social_links'][platform] = href.split('?')[0]
-                
-                # Find personal website (not social media)
-                if href.startswith('http') and not any(skip in href.lower() for skip in skip_hosts):
-                    if not result['personal_website']:
-                        result['personal_website'] = href
-            
-            return result
-            
-        except Exception as e:
-            print(f"[SOCIAL_GRAPH] Error scraping aggregator {url}: {e}")
-            return result
-
-# ============================================================================
-# FACEBOOK GROUPS DISCOVERY TASK
+# DISCOVERY TASK: FACEBOOK GROUPS
 # ============================================================================
 
 @celery_app.task(name='tasks.discover_facebook_groups')
 def discover_facebook_groups(user_filters=None, job_id=None):
     """
-    Discover Facebook Groups via Google Search + Apify
-    
-    Args:
-        user_filters: dict with:
-            - keywords: list of str (required)
-            - max_results: int (default 100)
-            - min_members: int (optional)
-            - max_members: int (optional)
-    
-    Returns:
-        dict with results summary
+    Discover Facebook Groups via Google Search Scraper (Apify) + full enrichment.
+
+    Pipeline:
+      1. Expand keywords → Google queries (site:facebook.com/groups "kw")
+      2. Run Apify google-search-scraper
+      3. Parse FB group URLs, names, member counts
+      4. enrich_profiles_full_pipeline
+      5. standardize_facebook_profiles → HubSpot import
     """
     if job_id is None:
         job_id = discover_facebook_groups.request.id
-    
+
     try:
         update_discovery_job_status(job_id, status='discovering')
-        
+
         if not APIFY_API_TOKEN:
             raise ValueError("APIFY_API_TOKEN must be set")
-        
+
         user_filters = user_filters or {}
-        keywords = user_filters.get('keywords', [])
+        keywords   = user_filters.get('keywords', [])
         max_results = user_filters.get('max_results', 100)
         min_members = user_filters.get('min_members', 0)
         max_members = user_filters.get('max_members', 0)
-        
+
         if not keywords:
             raise ValueError("keywords required for Facebook Groups discovery")
-        
-        print(f"Starting Facebook Groups discovery with keywords: {keywords}, max: {max_results}")
-        
-        # Expand keywords into Google search queries
+
+        print(f"Facebook Groups discovery: keywords={keywords}, max={max_results}")
+
+        # Expand keywords into Google queries
         google_queries = []
         for kw in keywords:
             google_queries.append(f'site:facebook.com/groups "{kw}"')
             google_queries.append(f'site:facebook.com/groups {kw} community')
             google_queries.append(f'site:facebook.com/groups {kw} group')
-        
-        print(f"Expanded to {len(google_queries)} Google queries")
-        
-        # Run Google search via Apify
+
+        # Cap at 15 queries to keep cost reasonable
+        google_queries = google_queries[:15]
+        print(f"Running {len(google_queries)} Google queries via Apify")
+
         from apify_client import ApifyClient
-        client = ApifyClient(APIFY_API_TOKEN)
-        
+        apify = ApifyClient(APIFY_API_TOKEN)
+
         run_input = {
-            'queries': '\n'.join(google_queries[:10]),  # Limit to 10 queries
-            'maxPagesPerQuery': 5,
-            'resultsPerPage': 20,
-            'countryCode': 'us',
-            'languageCode': 'en',
-            'mobileResults': False
+            'queries':           '\n'.join(google_queries),
+            'maxPagesPerQuery':  5,
+            'resultsPerPage':    20,
+            'countryCode':       'us',
+            'languageCode':      'en',
+            'mobileResults':     False,
         }
-        
-        print("Starting Google search...")
-        run = client.actor("apify~google-search-scraper").call(run_input=run_input)
-        
-        items = list(client.dataset(run["defaultDatasetId"]).iterate_items())
-        cost = run.get("usageTotalUsd", 0)
-        
-        print(f"Google search complete: {len(items)} result pages, cost: ${cost:.4f}")
-        
-        # Process results
+
+        run = apify.actor("apify~google-search-scraper").call(run_input=run_input)
+        items = list(apify.dataset(run["defaultDatasetId"]).iterate_items())
+        print(f"Google search complete: {len(items)} result pages")
+
+        # Parse results into profile dicts
         profiles = []
-        seen_urls = set()
-        
+        seen_urls: set = set()
+
         for item in items:
             if len(profiles) >= max_results:
                 break
-            
-            organic_results = item.get('organicResults', [])
-            
-            for result in organic_results:
+            for result in item.get('organicResults', []):
                 if len(profiles) >= max_results:
                     break
-                
+
                 url = result.get('url', '')
                 if 'facebook.com/groups/' not in url:
                     continue
-                
-                # Extract group URL
-                group_url = extract_facebook_group_url(url)
-                
+
+                group_url = _extract_facebook_group_url(url)
                 if group_url in seen_urls:
                     continue
                 seen_urls.add(group_url)
-                
-                title = result.get('title', '')
+
+                title   = result.get('title', '')
                 snippet = result.get('description', '')
-                
-                # Clean group name from title
-                group_name = title.replace(' | Facebook', '').replace(' - Facebook', '').strip()
-                
-                # Extract member count from snippet
-                member_count = extract_member_count_from_text(f"{title} {snippet}")
-                
-                # Filter by member count
-                if min_members > 0 and member_count > 0 and member_count < min_members:
+
+                group_name = (title
+                              .replace(' | Facebook', '')
+                              .replace(' - Facebook', '')
+                              .strip())
+
+                member_count = _extract_member_count(f"{title} {snippet}")
+
+                if min_members > 0 and 0 < member_count < min_members:
                     continue
-                if max_members > 0 and member_count > 0 and member_count > max_members:
+                if max_members > 0 and member_count > max_members:
                     continue
-                
+
                 profiles.append({
-                    'name': group_name,
-                    'url': group_url,
-                    'description': snippet[:2000],
-                    'member_count': member_count,
-                    'source': 'facebook_groups'
+                    'group_name':    group_name,
+                    'group_url':     group_url,
+                    'description':   snippet[:2000],
+                    'member_count':  member_count,
+                    # Fields expected by enrichment pipeline
+                    'url':           group_url,   # used by social graph builder
+                    'creator_name':  '',          # populated by Apollo if found
+                    'instagram_url': None,
+                    'youtube_url':   None,
+                    'twitter_url':   None,
+                    'facebook_url':  group_url,
+                    'tiktok_url':    None,
+                    'personal_website': None,
                 })
-        
-        print(f"Facebook Groups discovery complete: {len(profiles)} groups found")
-        
-        # Update status
+
+        print(f"Facebook Groups discovery: {len(profiles)} groups found")
         update_discovery_job_status(job_id, status='enriching', profiles_found=len(profiles))
-        
-        # Enrich profiles with social graph + Apollo
-        enriched_profiles = enrich_community_profiles(profiles, job_id)
-        
-        # Import to HubSpot
+
+        # Full enrichment pipeline
+        enriched = enrich_profiles_full_pipeline(profiles, job_id, platform='facebook_groups')
+
+        # Standardise → HubSpot
         update_discovery_job_status(job_id, status='importing')
-        standardized = standardize_community_profiles(enriched_profiles)
+        standardized = standardize_facebook_profiles(enriched)
         import_results = import_profiles_to_hubspot(standardized, job_id)
-        
-        # Final status
+
         update_discovery_job_status(
-            job_id,
-            status='completed',
+            job_id, status='completed',
             profiles_found=len(profiles),
             new_contacts_created=import_results['created'],
-            duplicates_skipped=import_results['skipped']
+            duplicates_skipped=import_results['skipped'],
         )
-        
+        print(f"Facebook job {job_id} done: {import_results['created']} created, "
+              f"{import_results['skipped']} skipped")
+
         return {
             'status': 'completed',
             'profiles_found': len(profiles),
             'new_contacts': import_results['created'],
-            'duplicates': import_results['skipped']
+            'duplicates': import_results['skipped'],
         }
-        
+
     except Exception as e:
         print(f"Facebook Groups discovery failed: {e}")
         import traceback
@@ -3152,1042 +2745,1120 @@ def discover_facebook_groups(user_filters=None, job_id=None):
 
 
 # ============================================================================
-# COMMUNITY PROFILE ENRICHMENT (Social Graph + Apollo)
+# APOLLO.IO ENRICHMENT CLIENT
 # ============================================================================
 
-def enrich_community_profiles(profiles: List[Dict], job_id: str) -> List[Dict]:
+class ApolloEnrichment:
     """
-    Enrich community profiles with:
-    1. Social graph (crawl website for emails + social links)
-    2. Apollo.io email finding (if we have name + domain)
-    
-    Args:
-        profiles: List of community profile dicts
-        job_id: Job tracking ID
-    
-    Returns:
-        Enriched profiles
+    Apollo.io API client for professional email lookup.
+
+    Strategy (matching colleague's implementation):
+      - Attempt 1: full query (name, domain, org, linkedin)
+      - Attempt 2 (if first fails and name looks like a real person):
+          firstName + lastName + domain only
+      - 300 ms delay between attempts
+      - Input dedup via SHA-256 hash
     """
-    print(f"Enriching {len(profiles)} community profiles...")
-    
-    social_graph_builder = SocialGraphBuilder()
-    apollo_client = ApolloEnrichment(APOLLO_API_KEY) if APOLLO_API_KEY else None
-    
-    enriched_count = 0
-    apollo_count = 0
-    
-    for profile in profiles:
+
+    BASE_URL = "https://api.apollo.io/api/v1"
+
+    # Domains that are never useful for Apollo lookup
+    SKIP_DOMAINS = {
+        "meetup.com", "eventbrite.com", "youtube.com", "youtu.be",
+        "reddit.com", "facebook.com", "instagram.com", "twitter.com",
+        "x.com", "linkedin.com", "patreon.com", "tiktok.com",
+        "google.com", "yelp.com", "tripadvisor.com", "wikipedia.org",
+        "amazon.com", "substack.com", "discord.com", "discord.gg",
+        "github.com", "medium.com",
+    }
+
+    # Name must look like a real human name (letters, spaces, hyphens, ≥2 chars)
+    _VALID_NAME_RE = re.compile(r'^[A-Za-z\s\-]{2,}$')
+
+    def __init__(self, api_key: str):
+        self.api_key = api_key
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    def person_match(self, name: str = None, domain: str = None,
+                     org_name: str = None, linkedin_url: str = None) -> Optional[Dict]:
+        """
+        Find email + contact info for a person.
+
+        Returns dict with: email, first_name, last_name, full_name, title,
+        linkedin, twitter, facebook, phone, location, headline, organization.
+        Returns None if nothing found.
+        """
+        if not self.api_key:
+            return None
+
+        # Attempt 1: full query
+        result = self._call_match(
+            name=name, domain=domain,
+            org_name=org_name, linkedin_url=linkedin_url
+        )
+        if result and result.get('email'):
+            return result
+
+        # Attempt 2: simplified (firstName + lastName + domain)
+        if name and domain and self._is_valid_candidate(name):
+            time.sleep(0.3)
+            parts = name.strip().split()
+            if len(parts) >= 2:
+                result2 = self._call_match(
+                    first_name=parts[0],
+                    last_name=' '.join(parts[1:]),
+                    domain=domain,
+                )
+                if result2 and result2.get('email'):
+                    return result2
+
+        return result  # return whatever we got (may have linkedin even without email)
+
+    @staticmethod
+    def extract_domain(url: str) -> str:
+        """Extract bare domain from URL, e.g. 'example.com'."""
         try:
-            # Step 1: Build social graph from website/Facebook page
-            website_url = profile.get('url', '')
-            leader_name = profile.get('name', '')
-            
-            if website_url:
-                graph_data = social_graph_builder.build_graph(website_url, leader_name)
-                
-                # Add emails
-                if graph_data['emails']:
-                    profile['email'] = graph_data['emails'][0]  # Take first email
-                    enriched_count += 1
-                
-                # Add social links
-                profile['instagram_url'] = graph_data['social_links'].get('instagram')
-                profile['youtube_url'] = graph_data['social_links'].get('youtube')
-                profile['twitter_url'] = graph_data['social_links'].get('twitter')
-                profile['linkedin_url'] = graph_data['social_links'].get('linkedin')
-                profile['tiktok_url'] = graph_data['social_links'].get('tiktok')
-                profile['twitch_url'] = graph_data['social_links'].get('twitch')
-                profile['discord_url'] = graph_data['social_links'].get('discord')
-                
-                # Store personal website if different from Facebook
-                if graph_data['personal_website']:
-                    profile['personal_website'] = graph_data['personal_website']
-            
-            # Step 2: Try Apollo.io if we don't have email yet
-            if not profile.get('email') and apollo_client:
-                # Extract domain from personal website
-                domain = None
-                if profile.get('personal_website'):
-                    domain = apollo_client.extract_domain(profile['personal_website'])
-                    
-                    # Only enrich if it's not a social media domain
-                    if domain and apollo_client.is_enrichable_domain(domain):
-                        apollo_data = apollo_client.person_match(
-                            name=leader_name,
-                            domain=domain
-                        )
-                        
-                        if apollo_data and apollo_data.get('email'):
-                            profile['email'] = apollo_data['email']
-                            profile['apollo_first_name'] = apollo_data.get('first_name')
-                            profile['apollo_last_name'] = apollo_data.get('last_name')
-                            profile['apollo_title'] = apollo_data.get('title')
-                            profile['apollo_phone'] = apollo_data.get('phone')
-                            profile['apollo_linkedin'] = apollo_data.get('linkedin')
-                            apollo_count += 1
-                            print(f"[APOLLO] Found email for {leader_name}")
-        
+            return urlparse(url).netloc.replace('www.', '').lower()
+        except Exception:
+            return ''
+
+    @staticmethod
+    def is_enrichable_domain(domain: str) -> bool:
+        """Return True if domain is not a social platform / known skip domain."""
+        if not domain:
+            return False
+        return not any(skip in domain for skip in ApolloEnrichment.SKIP_DOMAINS)
+
+    @staticmethod
+    def make_input_hash(**kwargs) -> str:
+        """SHA-256 hash of Apollo query params for dedup."""
+        payload = json.dumps(kwargs, sort_keys=True)
+        return hashlib.sha256(payload.encode()).hexdigest()
+
+    @staticmethod
+    def _is_valid_candidate(name: str) -> bool:
+        return bool(ApolloEnrichment._VALID_NAME_RE.match(name.strip()))
+
+    # ------------------------------------------------------------------
+    # Private helpers
+    # ------------------------------------------------------------------
+
+    def _call_match(self, name=None, first_name=None, last_name=None,
+                    domain=None, org_name=None, linkedin_url=None) -> Optional[Dict]:
+        """Single Apollo /people/match call."""
+        data: Dict = {'reveal_personal_emails': True}
+        if name:        data['name']              = name
+        if first_name:  data['first_name']        = first_name
+        if last_name:   data['last_name']         = last_name
+        if domain:      data['domain']            = domain
+        if org_name:    data['organization_name'] = org_name
+        if linkedin_url: data['linkedin_url']     = linkedin_url
+
+        try:
+            resp = requests.post(
+                f"{self.BASE_URL}/people/match",
+                headers={
+                    'Content-Type':  'application/json',
+                    'x-api-key':     self.api_key,
+                    'Cache-Control': 'no-cache',
+                },
+                json=data,
+                timeout=15,
+            )
+
+            if resp.status_code == 429:
+                print("[APOLLO] Rate limited — backing off 2s")
+                time.sleep(2)
+                return None
+            if resp.status_code in (401, 403):
+                print(f"[APOLLO] Auth error ({resp.status_code})")
+                return None
+            if resp.status_code == 422:
+                print("[APOLLO] Unprocessable (422) — invalid params")
+                return None
+            if not resp.ok:
+                print(f"[APOLLO] Error {resp.status_code}")
+                return None
+
+            person = resp.json().get('person') or {}
+            if not person:
+                return None
+
+            # Extract phone
+            phones = person.get('phone_numbers') or []
+            phone = phones[0].get('raw_number', '') if phones else ''
+
+            # Build location
+            loc_parts = [person.get('city'), person.get('state'), person.get('country')]
+            location = ', '.join(p for p in loc_parts if p)
+
+            return {
+                'email':        person.get('email', ''),
+                'first_name':   person.get('first_name', ''),
+                'last_name':    person.get('last_name', ''),
+                'full_name':    person.get('name', ''),
+                'title':        person.get('title', ''),
+                'linkedin':     person.get('linkedin_url', ''),
+                'twitter':      person.get('twitter_url', ''),
+                'facebook':     person.get('facebook_url', ''),
+                'phone':        phone,
+                'location':     location,
+                'headline':     person.get('headline', ''),
+                'organization': (person.get('organization') or {}).get('name', ''),
+            }
+
         except Exception as e:
-            print(f"Error enriching profile {profile.get('name')}: {e}")
-            continue
-    
-    print(f"Enrichment complete: {enriched_count} emails from social graph, {apollo_count} from Apollo")
-    return profiles
+            print(f"[APOLLO] Exception: {e}")
+            return None
 
 
-def standardize_community_profiles(profiles: List[Dict]) -> List[Dict]:
-    """Convert community profiles to HubSpot format"""
-    standardized = []
-    
-    for profile in profiles:
-        standardized_profile = {
-            # Core identity
-            'first_and_last_name': profile.get('apollo_first_name', '') + ' ' + profile.get('apollo_last_name', ''),
-            'community_name': profile.get('name', ''),
-            'facebook_profile_link': profile.get('url', ''),
-            'community_description': profile.get('description', ''),
-            
-            # Metrics
-            'facebook_group_members': profile.get('member_count', 0),
-            
-            # Contact info
-            'email': profile.get('email'),
-            'phone': profile.get('apollo_phone'),
-            
-            # Social links
-            'instagram_handle': profile.get('instagram_url'),
-            'youtube_profile_link': profile.get('youtube_url'),
-            'twitter_url': profile.get('twitter_url'),
-            'linkedin_profile_url': profile.get('linkedin_url'),
-            'tiktok_handle': profile.get('tiktok_url'),
-            'twitch_url': profile.get('twitch_url'),
-            'discord_url': profile.get('discord_url'),
-            'personal_website': profile.get('personal_website'),
-            
-            # Metadata
-            'platform': 'facebook_groups',
-            'discovery_source': 'google_facebook_search',
-            'apollo_enriched': bool(profile.get('apollo_first_name'))
+# ============================================================================
+# MILLIONVERIFIER EMAIL VALIDATION CLIENT
+# ============================================================================
+
+class MillionVerifierClient:
+    """
+    MillionVerifier API client for email validation.
+
+    Batch processing: groups of 10, parallel within each batch,
+    100 ms delay between batches (matches colleague's implementation).
+    """
+
+    BASE_URL = "https://api.millionverifier.com/api/v3/"
+
+    # Result mapping (API result → our status string)
+    _RESULT_MAP = {
+        'ok':          'valid',
+        'catch_all':   'catch-all',
+        'invalid':     'invalid',
+        'disposable':  'invalid',
+        'unknown':     'unknown',
+        'error':       'unknown',
+    }
+
+    def __init__(self, api_key: str):
+        self.api_key = api_key
+
+    def verify_email(self, email: str) -> Dict:
+        """Verify a single email. Returns dict with 'status' and raw fields."""
+        url = (f"{self.BASE_URL}?api={requests.utils.quote(self.api_key)}"
+               f"&email={requests.utils.quote(email)}&timeout=15")
+        try:
+            resp = requests.get(url, timeout=20)
+            resp.raise_for_status()
+            data = resp.json()
+            raw_result = data.get('result', 'unknown')
+            return {
+                'email':   data.get('email', email),
+                'status':  self._RESULT_MAP.get(raw_result, 'unknown'),
+                'quality': data.get('quality', 'unknown'),
+                'free':    bool(data.get('free')),
+                'role':    bool(data.get('role')),
+            }
+        except Exception as e:
+            print(f"[MV] Error verifying {email}: {e}")
+            return {'email': email, 'status': 'unknown', 'quality': 'unknown',
+                    'free': False, 'role': False}
+
+    def verify_batch(self, email_items: List[Dict]) -> Dict[str, str]:
+        """
+        Verify a list of {'email': str, 'profile_idx': int} dicts in parallel batches.
+
+        Returns dict: {email -> status_string}
+        """
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        results: Dict[str, str] = {}
+        batch_size = 10
+
+        for i in range(0, len(email_items), batch_size):
+            batch = email_items[i:i + batch_size]
+
+            with ThreadPoolExecutor(max_workers=batch_size) as executor:
+                future_to_email = {
+                    executor.submit(self.verify_email, item['email']): item['email']
+                    for item in batch
+                }
+                for future in as_completed(future_to_email):
+                    email = future_to_email[future]
+                    try:
+                        result = future.result()
+                        results[email] = result['status']
+                    except Exception as e:
+                        print(f"[MV] Future error for {email}: {e}")
+                        results[email] = 'unknown'
+
+            # 100 ms delay between batches
+            if i + batch_size < len(email_items):
+                time.sleep(0.1)
+
+        return results
+
+# ============================================================================
+# SOCIAL GRAPH BUILDER
+# Crawls websites and link aggregators for emails + social links.
+# Uses Apify Cheerio Scraper for reliability (JS-heavy pages, bot protection).
+# Falls back to direct requests for simple pages.
+# ============================================================================
+
+class SocialGraphBuilder:
+    """
+    Builds a social graph for a creator by:
+      1. Scraping Linktree / Beacons / other link aggregators (via Apify)
+      2. Crawling personal websites (/contact, /about, /about-us) (via Apify)
+      3. Direct HTTP fallback for both of the above
+    Extracts: emails, social profile URLs, personal website URL.
+    """
+
+    LINK_AGGREGATORS = [
+        'linktr.ee', 'beacons.ai', 'linkin.bio', 'linkpop.com',
+        'hoo.be', 'campsite.bio', 'lnk.bio', 'tap.bio', 'solo.to',
+        'bio.link', 'carrd.co',
+    ]
+
+    # Domains treated as social platforms (not personal websites)
+    _SOCIAL_HOSTS = {
+        'youtube.com', 'youtu.be', 'instagram.com', 'twitter.com', 'x.com',
+        'discord.gg', 'discord.com', 'facebook.com', 'tiktok.com', 'twitch.tv',
+        'linkedin.com', 'patreon.com', 'google.com', 'apple.com', 'spotify.com',
+        'amazon.com', 'reddit.com', 'tumblr.com', 'pinterest.com', 'github.com',
+        'medium.com', 'wordpress.com', 'linktr.ee', 'beacons.ai', 'ko-fi.com',
+        'buymeacoffee.com', 'gumroad.com', 'substack.com', 'bit.ly',
+        'meetup.com', 'eventbrite.com',
+    }
+
+    SOCIAL_PATTERNS: Dict[str, str] = {
+        'instagram_url': r'instagram\.com/(?!p/|reel/|explore/)([a-zA-Z0-9._]+)',
+        'youtube_url':   r'youtube\.com/(?:c/|channel/|@)?([a-zA-Z0-9_\-]+)',
+        'twitter_url':   r'(?:twitter|x)\.com/([a-zA-Z0-9_]+)',
+        'linkedin_url':  r'linkedin\.com/in/([a-zA-Z0-9\-]+)',
+        'tiktok_url':    r'tiktok\.com/@([a-zA-Z0-9._]+)',
+        'facebook_url':  r'facebook\.com/(?!groups/)([a-zA-Z0-9.]+)',
+        'twitch_url':    r'twitch\.tv/([a-zA-Z0-9_]+)',
+        'discord_url':   r'discord\.(?:gg|com)/([a-zA-Z0-9]+)',
+    }
+
+    # Email patterns
+    _EMAIL_RE = re.compile(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}')
+    _OBFUSCATED_PATTERNS = [
+        re.compile(r'([a-zA-Z0-9._%+-]+)\s*\[\s*at\s*\]\s*([a-zA-Z0-9.-]+)\s*\[\s*dot\s*\]\s*([a-zA-Z]{2,})', re.I),
+        re.compile(r'([a-zA-Z0-9._%+-]+)\s*\(\s*at\s*\)\s*([a-zA-Z0-9.-]+)\s*\(\s*dot\s*\)\s*([a-zA-Z]{2,})', re.I),
+        re.compile(r'([a-zA-Z0-9._%+-]+)\s*\{\s*at\s*\}\s*([a-zA-Z0-9.-]+)\s*\{\s*dot\s*\}\s*([a-zA-Z]{2,})', re.I),
+        re.compile(r'([a-zA-Z0-9._%+-]+)\s+at\s+([a-zA-Z0-9.-]+)\s+dot\s+([a-zA-Z]{2,})\b', re.I),
+    ]
+    _BLOCKED_EMAIL_PATTERNS = [
+        '.png', '.jpg', '.gif', '.jpeg', '.webp', '.svg',
+        'sentry.io', 'example.com', 'cloudfront', 'amazonaws',
+        'patreon.com', 'w3.org', 'schema.org', 'googleapis.com', 'gstatic.com',
+        'substackcdn', 'cdninstagram', 'fbcdn',
+    ]
+
+    def __init__(self, apify_token: str = None):
+        self.apify_token = apify_token
+        self._session = requests.Session()
+        self._session.headers.update({
+            'User-Agent': (
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+                'AppleWebKit/537.36 (KHTML, like Gecko) '
+                'Chrome/120.0.0.0 Safari/537.36'
+            )
+        })
+
+    # ------------------------------------------------------------------
+    # Public: batch operations (Apify-backed, called by enrichment pipeline)
+    # ------------------------------------------------------------------
+
+    def scrape_link_aggregators_batch(self, urls: List[str]) -> Dict[str, Dict]:
+        """
+        Scrape a batch of Linktree/Beacons URLs via Apify Cheerio Scraper.
+        Returns {url: {emails, social_links, personal_website}}
+        Falls back to direct scraping if Apify unavailable.
+        """
+        if not urls:
+            return {}
+
+        if self.apify_token:
+            try:
+                return self._apify_scrape_pages(urls, page_type='aggregator')
+            except Exception as e:
+                print(f"[SGB] Apify aggregator scrape failed, falling back: {e}")
+
+        # Direct fallback
+        results = {}
+        for url in urls:
+            results[url] = self._direct_scrape_aggregator(url)
+        return results
+
+    def crawl_websites_batch(self, websites: List[str]) -> Dict[str, Dict]:
+        """
+        Crawl /contact, /about, /about-us pages of personal websites via Apify.
+        Returns {domain: {emails, social_links}}
+        Falls back to direct scraping if Apify unavailable.
+        """
+        if not websites:
+            return {}
+
+        # Build start URLs: root + /contact + /about + /about-us
+        start_urls = []
+        domain_map: Dict[str, str] = {}  # url → domain key
+        for site in websites:
+            site = site.rstrip('/')
+            domain = ApolloEnrichment.extract_domain(site)
+            for path in ['', '/contact', '/about', '/about-us', '/contact-us', '/team']:
+                full_url = site + path
+                start_urls.append(full_url)
+                domain_map[full_url] = domain
+
+        if self.apify_token:
+            try:
+                return self._apify_crawl_websites(start_urls, domain_map)
+            except Exception as e:
+                print(f"[SGB] Apify website crawl failed, falling back: {e}")
+
+        # Direct fallback
+        results: Dict[str, Dict] = {}
+        for site in websites:
+            domain = ApolloEnrichment.extract_domain(site)
+            combined: Dict = {'emails': [], 'social_links': {}}
+            for path in ['', '/contact', '/about']:
+                page_data = self._direct_scrape_page(site.rstrip('/') + path)
+                combined['emails'].extend(page_data.get('emails', []))
+                combined['social_links'].update(page_data.get('social_links', {}))
+            combined['emails'] = list(set(combined['emails']))
+            results[domain] = combined
+        return results
+
+    # ------------------------------------------------------------------
+    # Apify-backed scrapers
+    # ------------------------------------------------------------------
+
+    def _apify_scrape_pages(self, urls: List[str], page_type: str) -> Dict[str, Dict]:
+        """Generic Apify Cheerio Scraper call."""
+        from apify_client import ApifyClient
+        apify = ApifyClient(self.apify_token)
+
+        PAGE_FUNCTION = r"""
+async function pageFunction(context) {
+    const { $, request } = context;
+    const text = $('body').text();
+    const links = [];
+    $('a[href]').each(function() { links.push($(this).attr('href')); });
+    return { url: request.url, text: text.substring(0, 8000), links: links.slice(0, 200) };
+}
+"""
+        run_input = {
+            'startUrls':       [{'url': u} for u in urls],
+            'maxCrawlPages':   len(urls),
+            'maxConcurrency':  10,
+            'requestTimeoutSecs': 30,
+            'pageFunction':    PAGE_FUNCTION,
         }
-        
-        # Remove None values
-        standardized_profile = {k: v for k, v in standardized_profile.items() 
-                               if v is not None and v != '' and v != 0}
-        
-        standardized.append(standardized_profile)
-    
-    return standardized
+        run = apify.actor("apify~cheerio-scraper").call(run_input=run_input, timeout_secs=90)
+        items = list(apify.dataset(run["defaultDatasetId"]).iterate_items())
 
+        results: Dict[str, Dict] = {}
+        for item in items:
+            url   = item.get('url', '')
+            text  = item.get('text', '')
+            links = item.get('links', [])
+            parsed = self._parse_page_content(text, links)
+            results[url] = parsed
+        return results
+
+    def _apify_crawl_websites(self, start_urls: List[str],
+                              domain_map: Dict[str, str]) -> Dict[str, Dict]:
+        """Crawl website pages via Apify and group results by domain."""
+        page_results = self._apify_scrape_pages(start_urls, page_type='website')
+
+        # Aggregate by domain
+        by_domain: Dict[str, Dict] = {}
+        for url, data in page_results.items():
+            domain = domain_map.get(url, ApolloEnrichment.extract_domain(url))
+            if domain not in by_domain:
+                by_domain[domain] = {'emails': [], 'social_links': {}}
+            # Only accept emails whose domain matches the crawled domain
+            for email in data.get('emails', []):
+                email_domain = email.split('@')[-1].replace('www.', '')
+                site_base    = domain.replace('www.', '')
+                if email_domain == site_base or email_domain.endswith('.' + site_base):
+                    by_domain[domain]['emails'].append(email)
+            by_domain[domain]['social_links'].update(data.get('social_links', {}))
+
+        # Deduplicate emails
+        for domain in by_domain:
+            by_domain[domain]['emails'] = list(set(by_domain[domain]['emails']))
+
+        return by_domain
+
+    # ------------------------------------------------------------------
+    # Direct HTTP fallbacks
+    # ------------------------------------------------------------------
+
+    def _direct_scrape_page(self, url: str) -> Dict:
+        """Direct HTTP GET + BeautifulSoup parse."""
+        result: Dict = {'emails': [], 'social_links': {}, 'personal_website': None}
+        try:
+            resp = self._session.get(url, timeout=10, allow_redirects=True)
+            if not resp.ok:
+                return result
+            soup = BeautifulSoup(resp.text, 'html.parser')
+
+            # mailto links (most reliable)
+            for a in soup.find_all('a', href=re.compile(r'^mailto:', re.I)):
+                email = a['href'].replace('mailto:', '').split('?')[0].strip().lower()
+                if email and '@' in email:
+                    result['emails'].append(email)
+
+            text = soup.get_text(' ', strip=True)
+            result['emails'].extend(self._extract_emails(text))
+
+            # Social links from <a> tags
+            for a in soup.find_all('a', href=True):
+                href = a['href']
+                for key, pattern in self.SOCIAL_PATTERNS.items():
+                    if re.search(pattern, href, re.I):
+                        result['social_links'][key] = href.split('?')[0]
+
+            result['emails'] = list(set(result['emails']))
+        except Exception as e:
+            print(f"[SGB] Direct scrape error {url}: {e}")
+        return result
+
+    def _direct_scrape_aggregator(self, url: str) -> Dict:
+        """Direct HTTP scrape of a Linktree/Beacons page."""
+        result: Dict = {'emails': [], 'social_links': {}, 'personal_website': None}
+        try:
+            resp = self._session.get(url, timeout=10, allow_redirects=True)
+            if not resp.ok:
+                return result
+            soup = BeautifulSoup(resp.text, 'html.parser')
+            text = soup.get_text(' ', strip=True)
+            result['emails'] = self._extract_emails(text)
+
+            for a in soup.find_all('a', href=True):
+                href = a['href']
+                for key, pattern in self.SOCIAL_PATTERNS.items():
+                    if re.search(pattern, href, re.I):
+                        result['social_links'][key] = href.split('?')[0]
+                # Personal website: external, non-social link
+                if href.startswith('http'):
+                    host = urlparse(href).netloc.replace('www.', '').lower()
+                    if not any(s in host for s in self._SOCIAL_HOSTS):
+                        if not result['personal_website']:
+                            result['personal_website'] = href
+
+        except Exception as e:
+            print(f"[SGB] Direct aggregator scrape error {url}: {e}")
+        return result
+
+    # ------------------------------------------------------------------
+    # Single-URL convenience (used for inline per-profile enrichment)
+    # ------------------------------------------------------------------
+
+    def build_graph(self, url: str, name: str = None) -> Dict:
+        """Build social graph from a single URL (aggregator or website)."""
+        is_agg = any(agg in url.lower() for agg in self.LINK_AGGREGATORS)
+        if is_agg:
+            data = self._direct_scrape_aggregator(url)
+            result = {
+                'emails':           data.get('emails', []),
+                'social_links':     data.get('social_links', {}),
+                'personal_website': data.get('personal_website'),
+                'linktree_url':     url,
+            }
+            # If aggregator links to a personal website, crawl that too
+            if result['personal_website']:
+                site_data = self._direct_scrape_page(result['personal_website'])
+                result['emails'].extend(site_data.get('emails', []))
+                result['social_links'].update(site_data.get('social_links', {}))
+        else:
+            data = self._direct_scrape_page(url)
+            result = {
+                'emails':           data.get('emails', []),
+                'social_links':     data.get('social_links', {}),
+                'personal_website': None,
+                'linktree_url':     None,
+            }
+        result['emails'] = list(set(result['emails']))
+        return result
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    def _parse_page_content(self, text: str, links: List[str]) -> Dict:
+        """Parse Apify Cheerio page result into emails + social links."""
+        emails = self._extract_emails(text)
+        social_links: Dict[str, str] = {}
+        personal_website = None
+
+        for href in links:
+            if not href:
+                continue
+            for key, pattern in self.SOCIAL_PATTERNS.items():
+                if re.search(pattern, href, re.I):
+                    social_links[key] = href.split('?')[0]
+            # Detect personal website from links
+            if href.startswith('http'):
+                host = urlparse(href).netloc.replace('www.', '').lower()
+                if not any(s in host for s in self._SOCIAL_HOSTS):
+                    if not personal_website:
+                        personal_website = href
+
+        return {'emails': emails, 'social_links': social_links,
+                'personal_website': personal_website}
+
+    def _extract_emails(self, text: str) -> List[str]:
+        """Extract both standard and obfuscated email addresses from text."""
+        emails = []
+
+        # Standard regex
+        for match in self._EMAIL_RE.finditer(text):
+            email = match.group(0).lower()
+            if not self._is_blocked_email(email):
+                emails.append(email)
+
+        # Obfuscated patterns  (name [at] domain [dot] com)
+        for pattern in self._OBFUSCATED_PATTERNS:
+            for match in pattern.finditer(text):
+                try:
+                    email = f"{match.group(1)}@{match.group(2)}.{match.group(3)}".lower().replace(' ', '')
+                    if '@' in email and not self._is_blocked_email(email):
+                        emails.append(email)
+                except Exception:
+                    pass
+
+        return list(set(emails))
+
+    def _is_blocked_email(self, email: str) -> bool:
+        return any(p in email.lower() for p in self._BLOCKED_EMAIL_PATTERNS)
 
 # ============================================================================
 # HELPER FUNCTIONS
 # ============================================================================
 
-def extract_facebook_group_url(raw_url: str) -> str:
-    """Extract clean Facebook group URL"""
+def _extract_facebook_group_url(raw_url: str) -> str:
+    """Extract a clean, canonical Facebook group URL."""
     try:
-        # Remove query params
         url = raw_url.split('?')[0]
-        
-        # Extract group ID or slug
         if '/groups/' in url:
             parts = url.split('/groups/')
             if len(parts) > 1:
                 group_id = parts[1].split('/')[0]
                 return f"https://www.facebook.com/groups/{group_id}"
-        
         return url
-    except:
+    except Exception:
         return raw_url
 
 
-def extract_member_count_from_text(text: str) -> int:
-    """Extract member count from text like '5.2K members' or '1,234 members'"""
+def _extract_member_count(text: str) -> int:
+    """Parse member count from strings like '5.2K members', '1,234 members'."""
+    patterns = [
+        r'([\d,]+\.?\d*[KkMm]?)\s+members?',
+        r'([\d,]+\.?\d*[KkMm]?)\s+people',
+        r'([\d,]+)\s+in\s+group',
+    ]
+    for pattern in patterns:
+        m = re.search(pattern, text, re.I)
+        if m:
+            raw = m.group(1).replace(',', '').upper()
+            try:
+                if 'K' in raw:
+                    return int(float(raw.replace('K', '')) * 1_000)
+                if 'M' in raw:
+                    return int(float(raw.replace('M', '')) * 1_000_000)
+                return int(raw)
+            except ValueError:
+                pass
+    return 0
+
+
+# ============================================================================
+# LEADS FINDER ENRICHMENT (Apify code_crafter~leads-finder)
+# ============================================================================
+
+def enrich_with_leads_finder(profiles: List[Dict], job_id: str) -> List[Dict]:
+    """
+    Use Apify code_crafter~leads-finder to find emails by domain for profiles
+    that still lack an email address.
+
+    Matches results back to profiles by domain.
+    """
+    if not APIFY_API_TOKEN:
+        print("[LEADS_FINDER] APIFY_API_TOKEN not set — skipping")
+        return profiles
+
+    apollo = ApolloEnrichment('')  # static methods only
+
+    # Collect unique enrichable domains from profiles with no email
+    domain_to_profile_idxs: Dict[str, List[int]] = {}
+    for i, p in enumerate(profiles):
+        if p.get('email'):
+            continue
+        website = p.get('personal_website') or p.get('url', '')
+        if not website:
+            continue
+        domain = apollo.extract_domain(website)
+        if domain and apollo.is_enrichable_domain(domain):
+            domain_to_profile_idxs.setdefault(domain, []).append(i)
+
+    domains = list(domain_to_profile_idxs.keys())
+    if not domains:
+        print("[LEADS_FINDER] No enrichable domains — skipping")
+        return profiles
+
+    print(f"[LEADS_FINDER] Looking up {len(domains)} domains...")
+
     try:
-        # Look for patterns like "5.2K members", "1,234 members", etc.
-        patterns = [
-            r'([\d,]+\.?\d*[KkMm]?)\s+members?',
-            r'([\d,]+\.?\d*[KkMm]?)\s+people',
-            r'([\d,]+)\s+in group'
-        ]
-        
-        for pattern in patterns:
-            match = re.search(pattern, text, re.IGNORECASE)
-            if match:
-                count_str = match.group(1).replace(',', '').upper()
-                
-                # Handle K and M suffixes
-                if 'K' in count_str:
-                    return int(float(count_str.replace('K', '')) * 1000)
-                elif 'M' in count_str:
-                    return int(float(count_str.replace('M', '')) * 1000000)
-                else:
-                    return int(count_str)
-        
-        return 0
-    except:
-        return 0
+        from apify_client import ApifyClient
+        apify = ApifyClient(APIFY_API_TOKEN)
 
+        run_input = {
+            'company_domain': domains,
+            'email_status':   ['validated'],
+            'fetch_count':    min(len(domains) * 5, 200),
+        }
+        run = apify.actor("code_crafter~leads-finder").call(
+            run_input=run_input, timeout_secs=120
+        )
+        items = list(apify.dataset(run["defaultDatasetId"]).iterate_items())
+        print(f"[LEADS_FINDER] Got {len(items)} results")
 
-# ============================================================================
-# ENHANCED PATREON ENRICHMENT
-# This extends the basic Patreon enrichment to actually crawl Patreon pages
-# ============================================================================
+        # Index results by domain
+        best_by_domain: Dict[str, Dict] = {}
+        for item in items:
+            domain = (item.get('company_domain') or item.get('domain') or '').lower()
+            if domain and domain not in best_by_domain:
+                best_by_domain[domain] = item
 
-def enrich_patreon_profiles_enhanced(raw_profiles: List[Dict], job_id: str) -> List[Dict]:
-    """
-    Enhanced Patreon enrichment:
-    1. Crawls the Patreon page for personal websites
-    2. For each social media link (Instagram, YouTube, Twitter):
-       - Scrape the profile page for email addresses
-       - Look for bio links (linktree/beacons)
-       - Follow those to find more emails
-    3. Use Apollo.io with any discovered website domains
-    """
-    print(f"Enhanced enrichment for {len(raw_profiles)} Patreon profiles...")
-    
-    social_graph_builder = SocialGraphBuilder()
-    apollo_client = ApolloEnrichment(APOLLO_API_KEY) if APOLLO_API_KEY else None
-    
-    patreon_crawl_count = 0
-    social_profile_crawl_count = 0
-    social_graph_count = 0
-    apollo_count = 0
-    
-    for profile in raw_profiles:
-        try:
-            creator_name = profile.get('creator_name') or profile.get('name', '')
-            patreon_url = profile.get('url', '')
-            
-            # Store social links from Patreon scraper
-            profile['social_links'] = {
-                'instagram': profile.get('instagram'),
-                'youtube': profile.get('youtube'),
-                'twitter': profile.get('twitter'),
-                'facebook': profile.get('facebook'),
-                'twitch': profile.get('twitch'),
-                'tiktok': profile.get('tiktok')
-            }
-            
-            # Step 1: Crawl the Patreon page for personal websites
-            if patreon_url:
-                print(f"[PATREON_CRAWL] Scraping {patreon_url}...")
-                
-                try:
-                    response = requests.get(patreon_url, timeout=10, headers={
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-                    })
-                    
-                    if response.ok:
-                        soup = BeautifulSoup(response.text, 'html.parser')
-                        links = soup.find_all('a', href=True)
-                        
-                        skip_hosts = ['patreon.com', 'youtube.com', 'instagram.com', 
-                                     'twitter.com', 'x.com', 'facebook.com', 'tiktok.com',
-                                     'spotify.com', 'apple.com', 'google.com']
-                        
-                        personal_websites = []
-                        
-                        for link in links:
-                            href = link['href']
-                            if href.startswith('http') and not any(skip in href.lower() for skip in skip_hosts):
-                                personal_websites.append(href)
-                        
-                        if personal_websites:
-                            website_url = personal_websites[0]
-                            print(f"[PATREON_CRAWL] Found website: {website_url}")
-                            profile['personal_website'] = website_url
-                            patreon_crawl_count += 1
-                            
-                            # Build social graph from personal website
-                            graph_data = social_graph_builder.build_graph(website_url, creator_name)
-                            
-                            if graph_data['emails']:
-                                profile['social_graph_email'] = graph_data['emails'][0]
-                                social_graph_count += 1
-                                print(f"[SOCIAL_GRAPH] Found email for {creator_name}")
-                            
-                            # Merge social links
-                            for platform, url in graph_data['social_links'].items():
-                                if url and not profile['social_links'].get(platform):
-                                    profile['social_links'][platform] = url
-                    
-                    time.sleep(0.5)
-                    
-                except Exception as e:
-                    print(f"[PATREON_CRAWL] Error crawling {patreon_url}: {e}")
-            
-            # Step 2: NEW - Scrape social media profiles for emails
-            # If we don't have an email yet, try scraping their social profiles
-            if not profile.get('social_graph_email') and not profile.get('apollo_email'):
-                
-                # Try Instagram first (often has email in bio or bio link)
-                instagram_url = profile['social_links'].get('instagram')
-                if instagram_url:
-                    print(f"[INSTAGRAM_CRAWL] Scraping {instagram_url} for email...")
-                    try:
-                        response = requests.get(instagram_url, timeout=10, headers={
-                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-                        })
-                        
-                        if response.ok:
-                            soup = BeautifulSoup(response.text, 'html.parser')
-                            
-                            # Look for emails in meta tags
-                            email_pattern = r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
-                            text = soup.get_text()
-                            emails = re.findall(email_pattern, text)
-                            
-                            # Filter out image emails
-                            valid_emails = [e for e in emails if not any(x in e.lower() for x in 
-                                          ['.png', '.jpg', '.gif', 'cdninstagram', 'fbcdn'])]
-                            
-                            if valid_emails:
-                                profile['social_graph_email'] = valid_emails[0]
-                                social_profile_crawl_count += 1
-                                social_graph_count += 1
-                                print(f"[INSTAGRAM_CRAWL] Found email: {valid_emails[0]}")
-                            
-                            # Look for bio links (linktree, beacons, etc.)
-                            all_links = soup.find_all('a', href=True)
-                            for link in all_links:
-                                href = link['href']
-                                
-                                # Check if it's a link aggregator
-                                if any(agg in href.lower() for agg in 
-                                      ['linktr.ee', 'beacons.ai', 'bio.link', 'linkin.bio', 'carrd.co']):
-                                    print(f"[INSTAGRAM_CRAWL] Found bio link: {href}")
-                                    
-                                    # Crawl the bio link
-                                    bio_data = social_graph_builder.build_graph(href, creator_name)
-                                    
-                                    if bio_data['emails'] and not profile.get('social_graph_email'):
-                                        profile['social_graph_email'] = bio_data['emails'][0]
-                                        social_profile_crawl_count += 1
-                                        social_graph_count += 1
-                                        print(f"[BIO_LINK] Found email: {bio_data['emails'][0]}")
-                                    
-                                    # Get personal website from bio link
-                                    if bio_data.get('personal_website'):
-                                        profile['personal_website'] = bio_data['personal_website']
-                                    
-                                    break  # Found bio link, stop looking
-                        
-                        time.sleep(0.5)
-                        
-                    except Exception as e:
-                        print(f"[INSTAGRAM_CRAWL] Error: {e}")
-                
-                # Try YouTube if still no email
-                if not profile.get('social_graph_email'):
-                    youtube_url = profile['social_links'].get('youtube')
-                    if youtube_url:
-                        print(f"[YOUTUBE_CRAWL] Scraping {youtube_url} for email...")
-                        try:
-                            response = requests.get(youtube_url, timeout=10, headers={
-                                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-                            })
-                            
-                            if response.ok:
-                                soup = BeautifulSoup(response.text, 'html.parser')
-                                text = soup.get_text()
-                                
-                                # Look for emails
-                                email_pattern = r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
-                                emails = re.findall(email_pattern, text)
-                                
-                                valid_emails = [e for e in emails if not any(x in e.lower() for x in 
-                                              ['.png', '.jpg', '.gif', 'youtube', 'google'])]
-                                
-                                if valid_emails:
-                                    profile['social_graph_email'] = valid_emails[0]
-                                    social_profile_crawl_count += 1
-                                    social_graph_count += 1
-                                    print(f"[YOUTUBE_CRAWL] Found email: {valid_emails[0]}")
-                                
-                                # Look for links in description
-                                all_links = soup.find_all('a', href=True)
-                                for link in all_links:
-                                    href = link['href']
-                                    
-                                    # Check for personal website or bio link
-                                    if href.startswith('http'):
-                                        # Skip YouTube/Google links
-                                        if any(skip in href.lower() for skip in ['youtube.com', 'google.com', 'youtu.be']):
-                                            continue
-                                        
-                                        # Check if it's a bio link
-                                        if any(agg in href.lower() for agg in 
-                                              ['linktr.ee', 'beacons.ai', 'bio.link', 'carrd.co']):
-                                            bio_data = social_graph_builder.build_graph(href, creator_name)
-                                            
-                                            if bio_data['emails'] and not profile.get('social_graph_email'):
-                                                profile['social_graph_email'] = bio_data['emails'][0]
-                                                social_profile_crawl_count += 1
-                                                social_graph_count += 1
-                                                print(f"[YOUTUBE_BIO_LINK] Found email: {bio_data['emails'][0]}")
-                                            
-                                            if bio_data.get('personal_website'):
-                                                profile['personal_website'] = bio_data['personal_website']
-                                            
-                                            break
-                                        
-                                        # Or it's a personal website
-                                        elif not profile.get('personal_website'):
-                                            profile['personal_website'] = href
-                                            print(f"[YOUTUBE_CRAWL] Found website: {href}")
-                            
-                            time.sleep(0.5)
-                            
-                        except Exception as e:
-                            print(f"[YOUTUBE_CRAWL] Error: {e}")
-                
-                # Try Twitter if still no email
-                if not profile.get('social_graph_email'):
-                    twitter_url = profile['social_links'].get('twitter')
-                    if twitter_url:
-                        print(f"[TWITTER_CRAWL] Scraping {twitter_url} for email...")
-                        try:
-                            response = requests.get(twitter_url, timeout=10, headers={
-                                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-                            })
-                            
-                            if response.ok:
-                                soup = BeautifulSoup(response.text, 'html.parser')
-                                text = soup.get_text()
-                                
-                                # Look for emails
-                                email_pattern = r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
-                                emails = re.findall(email_pattern, text)
-                                
-                                valid_emails = [e for e in emails if not any(x in e.lower() for x in 
-                                              ['.png', '.jpg', 'twitter', 'x.com'])]
-                                
-                                if valid_emails:
-                                    profile['social_graph_email'] = valid_emails[0]
-                                    social_profile_crawl_count += 1
-                                    social_graph_count += 1
-                                    print(f"[TWITTER_CRAWL] Found email: {valid_emails[0]}")
-                                
-                                # Look for bio links
-                                all_links = soup.find_all('a', href=True)
-                                for link in all_links:
-                                    href = link['href']
-                                    
-                                    if any(agg in href.lower() for agg in 
-                                          ['linktr.ee', 'beacons.ai', 'bio.link', 'carrd.co']):
-                                        bio_data = social_graph_builder.build_graph(href, creator_name)
-                                        
-                                        if bio_data['emails'] and not profile.get('social_graph_email'):
-                                            profile['social_graph_email'] = bio_data['emails'][0]
-                                            social_profile_crawl_count += 1
-                                            social_graph_count += 1
-                                            print(f"[TWITTER_BIO_LINK] Found email: {bio_data['emails'][0]}")
-                                        
-                                        if bio_data.get('personal_website'):
-                                            profile['personal_website'] = bio_data['personal_website']
-                                        
-                                        break
-                            
-                            time.sleep(0.5)
-                            
-                        except Exception as e:
-                            print(f"[TWITTER_CRAWL] Error: {e}")
-            
-            # Step 3: Try Apollo.io if we found a personal website but still no email
-            if apollo_client and not profile.get('social_graph_email') and profile.get('personal_website'):
-                domain = apollo_client.extract_domain(profile['personal_website'])
-                
-                if domain and apollo_client.is_enrichable_domain(domain):
-                    apollo_data = apollo_client.person_match(
-                        name=creator_name,
-                        domain=domain
-                    )
-                    
-                    if apollo_data and apollo_data.get('email'):
-                        profile['apollo_email'] = apollo_data['email']
-                        profile['apollo_first_name'] = apollo_data.get('first_name')
-                        profile['apollo_last_name'] = apollo_data.get('last_name')
-                        profile['apollo_title'] = apollo_data.get('title')
-                        profile['apollo_phone'] = apollo_data.get('phone')
-                        profile['apollo_linkedin'] = apollo_data.get('linkedin')
-                        apollo_count += 1
-                        print(f"[APOLLO] Found email for {creator_name}")
-                
-                time.sleep(0.5)
-        
-        except Exception as e:
-            print(f"Error in enhanced enrichment for {profile.get('name')}: {e}")
-            continue
-    
-    print(f"Enhanced enrichment complete:")
-    print(f"  - {patreon_crawl_count} personal websites from Patreon pages")
-    print(f"  - {social_profile_crawl_count} social profiles crawled (Instagram/YouTube/Twitter)")
-    print(f"  - {social_graph_count} total emails from social graph")
-    print(f"  - {apollo_count} emails from Apollo")
-    
-    return raw_profiles
-
-
-def standardize_patreon_profiles(raw_profiles: List[Dict]) -> List[Dict]:
-    """
-    Convert Apify scraper results to standardized format for HubSpot
-    
-    NOW INCLUDES social graph and Apollo data
-    """
-    standardized = []
-    
-    for i, profile in enumerate(raw_profiles):
-        try:
-            # Extract name parts
-            full_name = profile.get('creator_name') or profile.get('name', '')
-            
-            # Use Apollo name if available
-            if profile.get('apollo_first_name'):
-                full_name = f"{profile['apollo_first_name']} {profile.get('apollo_last_name', '')}".strip()
-            
-            # Patreon handle from URL
-            patreon_url = profile.get('url', '')
-            patreon_handle = patreon_url.split('/')[-1] if patreon_url else ''
-            
-            standardized_profile = {
-                # Core identity
-                'first_and_last_name': full_name,
-                'flagship_social_platform_handle': patreon_handle,
-                'patreon_link': patreon_url,
-                
-                # Bio/Description
-                'patreon_description': profile.get('about', ''),
-                
-                # Patreon-specific metrics
-                'patreon_patron_count': profile.get('patron_count', 0),
-                'patreon_paid_members': profile.get('paid_members', 0),
-                'patreon_total_members': profile.get('total_members', 0),
-                'patreon_post_count': profile.get('post_count', 0),
-                'patreon_earnings_per_month': profile.get('earnings_per_month', 0),
-                'patreon_creation_name': profile.get('creation_name', ''),
-                
-                # Email - prefer Apollo, fallback to social graph, fallback to Patreon scraper
-                'email': profile.get('apollo_email') or profile.get('social_graph_email') or profile.get('email'),
-                
-                # Phone - prefer Apollo
-                'phone': profile.get('apollo_phone') or profile.get('phone'),
-                
-                # Social links (URLs, not usernames) - from Patreon scraper
-                'instagram_handle': profile.get('instagram'),
-                'youtube_profile_link': profile.get('youtube'),
-                'tiktok_handle': profile.get('tiktok'),
-                'facebook_profile_link': profile.get('facebook'),
-                'twitch_url': profile.get('twitch'),
-                
-                # Apollo enrichment
-                'personal_website': profile.get('personal_website'),
-                'twitter_url': profile.get('social_links', {}).get('twitter'),
-                'linkedin_profile_url': profile.get('social_links', {}).get('linkedin'),
-                'discord_url': profile.get('social_links', {}).get('discord'),
-                'apollo_title': profile.get('apollo_title'),
-                'apollo_linkedin': profile.get('apollo_linkedin'),
-                'apollo_title': profile.get('apollo_title'),
-                'apollo_linkedin': profile.get('apollo_linkedin'),
-                'apollo_enriched': bool(profile.get('apollo_email')),
-                
-                # Metadata
-                'platform': 'patreon',
-                'discovery_source': 'apify_patreon_scraper'
-            }
-            
-            # Remove None/empty values
-            standardized_profile = {k: v for k, v in standardized_profile.items() 
-                                   if v is not None and v != '' and v != 0}
-            
-            standardized.append(standardized_profile)
-            
-        except Exception as e:
-            print(f"Failed to process Patreon profile #{i+1}: {e}")
-            continue
-    
-    print(f"Successfully processed {len(standardized)} Patreon profiles")
-    return standardized
-
-def standardize_patreon_profiles(raw_profiles):
-    """
-    Convert Apify scraper results to standardized format for HubSpot
-    
-    Automatically filters out NSFW profiles.
-    """
-    standardized = []
-    
-    for i, profile in enumerate(raw_profiles):
-        try:
-            # Skip NSFW profiles
-            if profile.get('is_nsfw', 0) == 1:
-                print(f"Skipping NSFW profile: {profile.get('name', 'Unknown')}")
+        # Apply to profiles
+        matched = 0
+        for domain, idxs in domain_to_profile_idxs.items():
+            match = best_by_domain.get(domain.lower())
+            if not match:
                 continue
-            
-            # Extract name parts
-            full_name = profile.get('creator_name') or profile.get('name', '')
-            name_parts = full_name.split() if full_name else []
-            first_name = name_parts[0] if name_parts else ''
-            last_name = ' '.join(name_parts[1:]) if len(name_parts) > 1 else ''
-            
-            # Patreon handle from URL
-            patreon_url = profile.get('url', '')
-            patreon_handle = patreon_url.split('/')[-1] if patreon_url else ''
-            
-            standardized_profile = {
-                # Core identity
-                'first_and_last_name': full_name,
-                'flagship_social_platform_handle': patreon_handle,
-                'patreon_link': patreon_url,
-                
-                # Bio/Description
-                'patreon_description': profile.get('about', ''),
-                
-                # Patreon-specific metrics
-                'patreon_patron_count': profile.get('patron_count', 0),
-                'patreon_paid_members': profile.get('paid_members', 0),
-                'patreon_total_members': profile.get('total_members', 0),
-                'patreon_post_count': profile.get('post_count', 0),
-                'patreon_earnings_per_month': profile.get('earnings_per_month', 0),
-                'patreon_creation_name': profile.get('creation_name', ''),
-                
-                # Social links (URLs, not usernames)
-                'instagram_handle': profile.get('instagram'),  # Full URL
-                'youtube_profile_link': profile.get('youtube'),
-                'tiktok_handle': profile.get('tiktok'),  # Full URL
-                'facebook_profile_link': profile.get('facebook'),
-                'twitch_url': profile.get('twitch'),
-                
-                # Metadata
-                'platform': 'patreon',
-                'discovery_source': 'apify_patreon_scraper'
+            email = match.get('email') or match.get('work_email') or match.get('personal_email', '')
+            if not email:
+                continue
+            for i in idxs:
+                p = profiles[i]
+                p['email'] = email
+                if match.get('phone') and not p.get('phone'):
+                    p['phone'] = match['phone']
+                if match.get('linkedin_url') and not p.get('linkedin_url'):
+                    p['linkedin_url'] = match['linkedin_url']
+                if not p.get('creator_name') and match.get('first_name') and match.get('last_name'):
+                    p['creator_name'] = f"{match['first_name']} {match['last_name']}"
+                matched += 1
+
+        print(f"[LEADS_FINDER] Matched emails for {matched} profiles")
+
+    except Exception as e:
+        print(f"[LEADS_FINDER] Error: {e}")
+        import traceback
+        traceback.print_exc()
+
+    return profiles
+
+
+# ============================================================================
+# UNIFIED ENRICHMENT PIPELINE
+# ============================================================================
+
+def enrich_profiles_full_pipeline(profiles: List[Dict], job_id: str,
+                                  platform: str) -> List[Dict]:
+    """
+    Full enrichment pipeline (platform-agnostic).
+
+    Expects each profile dict to have at minimum:
+      url           – primary URL (Patreon page / FB group URL)
+      creator_name  – person name (may be empty)
+      instagram_url, youtube_url, twitter_url, facebook_url, tiktok_url
+      personal_website (may be None)
+
+    Steps:
+      1. Link Aggregators Pass 1 – batch-scrape Linktree/Beacons via Apify
+      2. Website Crawl – batch-crawl personal websites via Apify
+      3. Apollo.io   – two-attempt person match for profiles still missing email
+      4. Leads Finder – domain-based Apify lookup for profiles still missing email
+      5. MillionVerifier – validate all discovered emails
+    """
+    if not profiles:
+        return profiles
+
+    print(f"[ENRICH] Starting full pipeline for {len(profiles)} {platform} profiles")
+
+    sgb    = SocialGraphBuilder(apify_token=APIFY_API_TOKEN)
+    apollo = ApolloEnrichment(APOLLO_API_KEY) if APOLLO_API_KEY else None
+    mv     = MillionVerifierClient(MILLIONVERIFIER_API_KEY) if MILLIONVERIFIER_API_KEY else None
+
+    # ------------------------------------------------------------------ #
+    # STEP 1: Link Aggregators (Linktree, Beacons, etc.)                 #
+    # ------------------------------------------------------------------ #
+    print("[ENRICH] Step 1: Link aggregators")
+
+    # Collect aggregator URLs from known social fields and the primary URL
+    _LINK_AGG_HOSTS = set(SocialGraphBuilder.LINK_AGGREGATORS)
+
+    def _is_aggregator(url: str) -> bool:
+        return bool(url) and any(agg in url.lower() for agg in _LINK_AGG_HOSTS)
+
+    agg_urls: List[str] = []
+    agg_url_to_idx: Dict[str, List[int]] = {}
+    for i, p in enumerate(profiles):
+        for field in ('personal_website', 'instagram_url', 'youtube_url',
+                      'twitter_url', 'url'):
+            val = p.get(field, '')
+            if val and _is_aggregator(val):
+                agg_urls.append(val)
+                agg_url_to_idx.setdefault(val, []).append(i)
+
+    if agg_urls:
+        print(f"[ENRICH]   Scraping {len(set(agg_urls))} aggregator URLs")
+        agg_results = sgb.scrape_link_aggregators_batch(list(set(agg_urls)))
+        for url, data in agg_results.items():
+            for i in agg_url_to_idx.get(url, []):
+                p = profiles[i]
+                if data.get('emails') and not p.get('email'):
+                    p['email'] = data['emails'][0]
+                for key, val in data.get('social_links', {}).items():
+                    if val and not p.get(key):
+                        p[key] = val
+                if data.get('personal_website') and not p.get('personal_website'):
+                    p['personal_website'] = data['personal_website']
+
+    # ------------------------------------------------------------------ #
+    # STEP 2: Website Crawl                                               #
+    # ------------------------------------------------------------------ #
+    print("[ENRICH] Step 2: Website crawl")
+
+    websites_to_crawl: List[str] = []
+    website_to_idx: Dict[str, List[int]] = {}
+    for i, p in enumerate(profiles):
+        site = p.get('personal_website', '')
+        if (site and not _is_aggregator(site)
+                and ApolloEnrichment.is_enrichable_domain(
+                    ApolloEnrichment.extract_domain(site))):
+            websites_to_crawl.append(site)
+            website_to_idx.setdefault(site, []).append(i)
+
+    if websites_to_crawl:
+        print(f"[ENRICH]   Crawling {len(set(websites_to_crawl))} websites")
+        website_results = sgb.crawl_websites_batch(list(set(websites_to_crawl)))
+        for domain, data in website_results.items():
+            # Find profiles whose personal_website matches this domain
+            for site, idxs in website_to_idx.items():
+                if ApolloEnrichment.extract_domain(site) == domain:
+                    for i in idxs:
+                        p = profiles[i]
+                        if data.get('emails') and not p.get('email'):
+                            p['email'] = data['emails'][0]
+                        for key, val in data.get('social_links', {}).items():
+                            if val and not p.get(key):
+                                p[key] = val
+
+    # ------------------------------------------------------------------ #
+    # STEP 3: Apollo.io                                                   #
+    # ------------------------------------------------------------------ #
+    print("[ENRICH] Step 3: Apollo.io")
+
+    if apollo:
+        apollo_hits = 0
+        seen_hashes: set = set()
+
+        for p in profiles:
+            if p.get('email'):
+                continue  # already have email
+
+            name    = p.get('creator_name', '').strip()
+            site    = p.get('personal_website', '')
+            domain  = ApolloEnrichment.extract_domain(site) if site else ''
+            org     = p.get('group_name', '')   # FB groups use group_name
+            linkedin = p.get('linkedin_url', '')
+
+            if not (name or domain):
+                continue
+            if domain and not ApolloEnrichment.is_enrichable_domain(domain):
+                continue
+
+            # Dedup
+            input_hash = ApolloEnrichment.make_input_hash(
+                name=name, domain=domain, org=org, linkedin=linkedin
+            )
+            if input_hash in seen_hashes:
+                continue
+            seen_hashes.add(input_hash)
+
+            result = apollo.person_match(
+                name=name or None,
+                domain=domain or None,
+                org_name=org or None,
+                linkedin_url=linkedin or None,
+            )
+
+            if result:
+                if result.get('email'):
+                    p['email'] = result['email']
+                    apollo_hits += 1
+                    print(f"[APOLLO] Found email for {name or domain}")
+                # Merge other Apollo data regardless of email
+                if result.get('first_name') and not p.get('creator_name'):
+                    p['creator_name'] = (
+                        f"{result['first_name']} {result.get('last_name', '')}".strip()
+                    )
+                if result.get('phone') and not p.get('phone'):
+                    p['phone'] = result['phone']
+                if result.get('linkedin') and not p.get('linkedin_url'):
+                    p['linkedin_url'] = result['linkedin']
+                if result.get('twitter') and not p.get('twitter_url'):
+                    p['twitter_url'] = result['twitter']
+
+            time.sleep(0.3)  # respect rate limits
+
+        print(f"[ENRICH]   Apollo found {apollo_hits} emails")
+    else:
+        print("[ENRICH]   Apollo skipped (no API key)")
+
+    # ------------------------------------------------------------------ #
+    # STEP 4: Leads Finder                                                #
+    # ------------------------------------------------------------------ #
+    print("[ENRICH] Step 4: Leads Finder")
+    profiles = enrich_with_leads_finder(profiles, job_id)
+
+    # ------------------------------------------------------------------ #
+    # STEP 5: MillionVerifier email validation                            #
+    # ------------------------------------------------------------------ #
+    print("[ENRICH] Step 5: MillionVerifier email validation")
+
+    if mv:
+        email_items = [
+            {'email': p['email'], 'idx': i}
+            for i, p in enumerate(profiles)
+            if p.get('email')
+        ]
+        if email_items:
+            print(f"[ENRICH]   Validating {len(email_items)} emails")
+            validation_results = mv.verify_batch(email_items)
+            for item in email_items:
+                status = validation_results.get(item['email'], 'unknown')
+                profiles[item['idx']]['email_validation_status'] = status
+            valid_count = sum(1 for s in validation_results.values() if s == 'valid')
+            print(f"[ENRICH]   {valid_count}/{len(email_items)} emails valid")
+        else:
+            print("[ENRICH]   No emails to validate")
+    else:
+        print("[ENRICH]   MillionVerifier skipped (no API key)")
+
+    print(f"[ENRICH] Pipeline complete for {len(profiles)} profiles")
+    return profiles
+
+
+# ============================================================================
+# STANDARDIZE: PATREON → HUBSPOT
+# ============================================================================
+
+def standardize_patreon_profiles(profiles: List[Dict]) -> List[Dict]:
+    """
+    Map enriched Patreon profiles to the exact HubSpot contact property names
+    required for batch-create. Unknown / None / empty values are dropped.
+    """
+    standardized = []
+
+    for i, profile in enumerate(profiles):
+        try:
+            props = {
+                # ── Universal social links ──────────────────────────────
+                'email':                profile.get('email'),
+                'instagram_handle':     profile.get('instagram_url'),
+                'youtube_profile_link': profile.get('youtube_url'),
+                'tiktok_handle':        profile.get('tiktok_url'),
+                'website':              profile.get('personal_website'),
+                'twitterhandle':        profile.get('twitter_url'),
+                'facebook_profile_link': profile.get('facebook_url'),
+
+                # ── Patreon-specific ───────────────────────────────────
+                'patreon_link':         profile.get('url'),
+                'patreon_title':        profile.get('creator_name') or profile.get('name'),
+                'total_patrons':        (profile.get('patron_count')
+                                         or profile.get('total_members')),
+                'paid_patrons':         (profile.get('paid_members')
+                                         or profile.get('paid_patrons')),
+                'patreon_description':  (profile.get('about')
+                                         or profile.get('description')),
+
+                # ── Metadata ──────────────────────────────────────────
+                'flagship_social_platform': 'patreon',
+                'email_validation_status':  profile.get('email_validation_status'),
             }
-            
-            # Remove None/empty values
-            standardized_profile = {k: v for k, v in standardized_profile.items() 
-                                   if v is not None and v != '' and v != 0}
-            
-            standardized.append(standardized_profile)
-            
+
+            # Drop None / empty-string / zero values
+            props = {k: v for k, v in props.items()
+                     if v is not None and v != '' and v != 0}
+
+            standardized.append(props)
+
         except Exception as e:
-            print(f"Failed to process Patreon profile #{i+1}: {e}")
+            print(f"[STANDARDIZE] Patreon profile #{i+1} error: {e}")
             continue
-    
-    print(f"Successfully processed {len(standardized)} Patreon profiles (NSFW profiles excluded)")
+
+    print(f"[STANDARDIZE] {len(standardized)} Patreon profiles ready for HubSpot")
     return standardized
+
+
+# ============================================================================
+# STANDARDIZE: FACEBOOK GROUPS → HUBSPOT
+# ============================================================================
+
+def standardize_facebook_profiles(profiles: List[Dict]) -> List[Dict]:
+    """
+    Map enriched Facebook Group profiles to the exact HubSpot contact property
+    names required for batch-create. Unknown / None / empty values are dropped.
+    """
+    standardized = []
+
+    for i, profile in enumerate(profiles):
+        try:
+            props = {
+                # ── Universal social links ──────────────────────────────
+                'email':                profile.get('email'),
+                'instagram_handle':     profile.get('instagram_url'),
+                'youtube_profile_link': profile.get('youtube_url'),
+                'tiktok_handle':        profile.get('tiktok_url'),
+                'website':              profile.get('personal_website'),
+                'twitterhandle':        profile.get('twitter_url'),
+                'facebook_profile_link': profile.get('facebook_url'),
+
+                # ── Facebook Groups-specific ──────────────────────────
+                'facebook_group_link':        profile.get('group_url'),
+                'facebook_group_name':        profile.get('group_name'),
+                'facebook_group_size':        profile.get('member_count') or None,
+                'facebook_group_description': profile.get('description'),
+
+                # ── Metadata ─────────────────────────────────────────
+                'flagship_social_platform': 'facebook_groups',
+                'email_validation_status':  profile.get('email_validation_status'),
+            }
+
+            # Drop None / empty-string / zero values
+            props = {k: v for k, v in props.items()
+                     if v is not None and v != '' and v != 0}
+
+            standardized.append(props)
+
+        except Exception as e:
+            print(f"[STANDARDIZE] Facebook profile #{i+1} error: {e}")
+            continue
+
+    print(f"[STANDARDIZE] {len(standardized)} Facebook profiles ready for HubSpot")
+    return standardized
+
+
+# ============================================================================
+# REDIS JOB STATUS TRACKER
+# ============================================================================
 
 def update_discovery_job_status(job_id, status, **kwargs):
-    """Update discovery job status in Redis"""
+    """Update discovery job status in Redis (24-hour TTL)."""
     try:
-        import redis
+        import redis as redis_lib
         redis_url = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
-        r = redis.from_url(redis_url, decode_responses=True)
-        
-        job_key = f'discovery_job:{job_id}'
-        
+        r = redis_lib.from_url(redis_url, decode_responses=True)
+
+        job_key  = f'discovery_job:{job_id}'
         job_data = r.get(job_key)
-        if job_data:
-            job_data = json.loads(job_data)
-        else:
-            job_data = {'job_id': job_id}
-        
-        job_data['status'] = status
+        job_data = json.loads(job_data) if job_data else {'job_id': job_id}
+
+        job_data['status']     = status
         job_data['updated_at'] = datetime.now().isoformat()
         job_data.update(kwargs)
-        
+
         r.setex(job_key, 86400, json.dumps(job_data))
-        
-        print(f"Job {job_id} status updated: {status}")
+        print(f"Job {job_id} → {status}")
     except Exception as e:
         print(f"Failed to update job status: {e}")
 
 
-def import_profiles_to_hubspot(profiles, job_id):
-    """Import discovered profiles to HubSpot via batch API"""
+# ============================================================================
+# HUBSPOT BATCH IMPORT
+# ============================================================================
+
+def import_profiles_to_hubspot(profiles: List[Dict], job_id: str) -> Dict:
+    """
+    Import standardized profiles to HubSpot via batch contacts API.
+
+    Profiles must already be in HubSpot property key format (output of
+    standardize_patreon_profiles / standardize_facebook_profiles). This
+    function passes them through directly with no additional field mapping.
+
+    Batch size: 100 contacts per request (HubSpot limit).
+    Returns: {'created': int, 'skipped': int}
+    """
     if not HUBSPOT_API_KEY:
         raise ValueError("HUBSPOT_API_KEY must be set in environment")
-    
+
+    # Build contact inputs — profile dict IS the properties dict
     contacts = []
-    
-    print(f"Preparing {len(profiles)} profiles for HubSpot import")
-    
     for idx, profile in enumerate(profiles):
-        # Map discovery fields to HubSpot properties
-        properties = {
-            # Core identity
-            'first_and_last_name': profile.get('first_and_last_name', ''),
-            'flagship_social_platform_handle': profile.get('flagship_social_platform_handle', ''),
-            'instagram_handle': profile.get('instagram_handle', ''),
-            'instagram_bio': profile.get('instagram_bio', ''),
-            
-            # Metrics
-            'instagram_followers': profile.get('instagram_followers', 0),
-            'average_engagement': profile.get('average_engagement', 0),
-            
-            # Contact info
-            'email': profile.get('email'),
-            'phone': profile.get('phone'),
-            'tiktok_handle': profile.get('tiktok_handle'),
-            'youtube_profile_link': profile.get('youtube_profile_link'),
-            'facebook_profile_link': profile.get('facebook_profile_link'),
-            'patreon_link': profile.get('patreon_link'),
-            'pinterest_profile_link': profile.get('pinterest_profile_link'),
-            
-            # Location
-            'city': profile.get('city'),
-            'state': profile.get('state'),
-            'country': profile.get('country'),
-            
-            # Discovery metadata
-            'enrichment_status': 'pending',
-        }
-        
-        # Remove None values (HubSpot API doesn't like them)
-        properties = {k: v for k, v in properties.items() if v is not None and v != ''}
-        
+        properties = {k: v for k, v in profile.items()
+                      if v is not None and v != ''}
         contacts.append({
-            'properties': properties,
-            'objectWriteTraceId': f"{job_id}_{idx}"
+            'properties':           properties,
+            'objectWriteTraceId':   f"{job_id}_{idx}",
         })
-    
-    # Batch import (max 100 per request)
+
     created_count = 0
     skipped_count = 0
     total_batches = (len(contacts) + 99) // 100
-    
-    print(f"Importing in {total_batches} batches...")
-    
+
+    print(f"[HUBSPOT] Importing {len(contacts)} contacts in {total_batches} batches")
+
     for i in range(0, len(contacts), 100):
-        batch = contacts[i:i+100]
+        batch     = contacts[i:i + 100]
         batch_num = (i // 100) + 1
-        
+
         try:
-            print(f"Importing batch {batch_num}/{total_batches} ({len(batch)} contacts)...")
-            
-            response = requests.post(
+            resp = requests.post(
                 f"{HUBSPOT_API_URL}/crm/v3/objects/contacts/batch/create",
                 headers={
                     'Authorization': f'Bearer {HUBSPOT_API_KEY}',
-                    'Content-Type': 'application/json'
+                    'Content-Type':  'application/json',
                 },
                 json={'inputs': batch},
-                timeout=30
+                timeout=30,
             )
-            
-            if response.status_code == 201:
-                # All created successfully
+
+            if resp.status_code == 201:
                 created_count += len(batch)
-                print(f"Batch {batch_num}: {len(batch)} contacts created")
-                
-            elif response.status_code == 207:
-                # Multi-status: some created, some duplicates
-                result = response.json()
+                print(f"[HUBSPOT] Batch {batch_num}/{total_batches}: {len(batch)} created")
+
+            elif resp.status_code == 207:
+                result        = resp.json()
                 batch_created = len(result.get('results', []))
-                batch_errors = result.get('errors', [])
+                batch_errors  = result.get('errors', [])
                 batch_skipped = len(batch_errors)
-                
+
                 created_count += batch_created
                 skipped_count += batch_skipped
-                
-                print(f"Batch {batch_num}: {batch_created} created, {batch_skipped} duplicates/errors")
-                
-                # Log first few errors for debugging
-                for error in batch_errors[:3]:
-                    print(f"Error: {error.get('message', 'Unknown error')}")
-                
+
+                print(f"[HUBSPOT] Batch {batch_num}/{total_batches}: "
+                      f"{batch_created} created, {batch_skipped} duplicates/errors")
+                for err in batch_errors[:3]:
+                    print(f"  Error: {err.get('message', 'Unknown')}")
+
             else:
-                # Error
-                print(f"Batch import error: {response.status_code} - {response.text}")
+                print(f"[HUBSPOT] Batch {batch_num} error: "
+                      f"{resp.status_code} — {resp.text[:200]}")
                 skipped_count += len(batch)
-        
+
         except Exception as e:
-            print(f"Exception importing batch {batch_num}: {e}")
+            print(f"[HUBSPOT] Exception on batch {batch_num}: {e}")
             skipped_count += len(batch)
-        
-        # Small delay between batches to avoid rate limits
+
         if i + 100 < len(contacts):
             time.sleep(0.5)
-    
-    print(f"Import complete: {created_count} created, {skipped_count} skipped/errors")
-    
-    return {
-        'created': created_count,
-        'skipped': skipped_count
-    }
-class ApolloEnrichment:
-    """Apollo.io API client for finding emails"""
-    
-    BASE_URL = "https://api.apollo.io/api/v1"
-    
-    SKIP_DOMAINS = [
-        "meetup.com", "eventbrite.com", "youtube.com", "youtu.be",
-        "reddit.com", "facebook.com", "instagram.com", "twitter.com",
-        "x.com", "linkedin.com", "patreon.com", "tiktok.com",
-        "google.com", "yelp.com", "substack.com", "discord.com",
-        "discord.gg", "github.com", "medium.com"
-    ]
-    
-    def __init__(self, api_key: str):
-        self.api_key = api_key
-    
-    def person_match(self, name: str = None, domain: str = None, 
-                    org_name: str = None, linkedin_url: str = None) -> Dict:
-        """Find email and profile info for a person"""
-        if not self.api_key:
-            return None
-        
-        data = {'reveal_personal_emails': True}
-        if name:
-            data['name'] = name
-        if domain:
-            data['domain'] = domain
-        if org_name:
-            data['organization_name'] = org_name
-        if linkedin_url:
-            data['linkedin_url'] = linkedin_url
-        
-        try:
-            response = requests.post(
-                f"{self.BASE_URL}/people/match",
-                headers={
-                    'Content-Type': 'application/json',
-                    'x-api-key': self.api_key,
-                    'Cache-Control': 'no-cache'
-                },
-                json=data,
-                timeout=15
-            )
-            
-            if response.status_code == 429:
-                print("[APOLLO] Rate limited")
-                time.sleep(2)
-                return None
-            
-            if not response.ok:
-                print(f"[APOLLO] Error {response.status_code}")
-                return None
-            
-            result = response.json()
-            person = result.get('person', {})
-            
-            if not person:
-                return None
-            
-            phone_numbers = person.get('phone_numbers', [])
-            phone = phone_numbers[0].get('raw_number', '') if phone_numbers else ''
-            
-            location_parts = [person.get('city'), person.get('state'), person.get('country')]
-            location = ', '.join(filter(None, location_parts))
-            
-            return {
-                'email': person.get('email', ''),
-                'first_name': person.get('first_name', ''),
-                'last_name': person.get('last_name', ''),
-                'full_name': person.get('name', ''),
-                'title': person.get('title', ''),
-                'linkedin': person.get('linkedin_url', ''),
-                'twitter': person.get('twitter_url', ''),
-                'facebook': person.get('facebook_url', ''),
-                'phone': phone,
-                'location': location,
-                'headline': person.get('headline', ''),
-                'organization': person.get('organization', {}).get('name', ''),
-                'org_phone': person.get('organization', {}).get('phone', '')
-            }
-            
-        except Exception as e:
-            print(f"[APOLLO] Error: {e}")
-            return None
-    
-    @staticmethod
-    def extract_domain(url: str) -> str:
-        """Extract domain from URL"""
-        try:
-            parsed = urlparse(url)
-            domain = parsed.netloc.replace('www.', '')
-            return domain
-        except:
-            return ""
-    
-    @staticmethod
-    def is_enrichable_domain(domain: str) -> bool:
-        """Check if domain should be enriched (not social media)"""
-        if not domain:
-            return False
-        return not any(skip in domain for skip in ApolloEnrichment.SKIP_DOMAINS)
 
-
-# ============================================================================
-# SOCIAL GRAPH BUILDER
-# ============================================================================
-
-class SocialGraphBuilder:
-    """Crawls websites and link aggregators to find emails and social profiles"""
-    
-    LINK_AGGREGATORS = [
-        'linktr.ee', 'beacons.ai', 'linkin.bio', 'linkpop.com',
-        'hoo.be', 'campsite.bio', 'lnk.bio', 'tap.bio', 'solo.to',
-        'bio.link', 'carrd.co'
-    ]
-    
-    SOCIAL_PATTERNS = {
-        'instagram': r'instagram\.com/([a-zA-Z0-9._]+)',
-        'youtube': r'youtube\.com/(c/|channel/|@)?([a-zA-Z0-9_-]+)',
-        'twitter': r'(twitter\.com|x\.com)/([a-zA-Z0-9_]+)',
-        'linkedin': r'linkedin\.com/in/([a-zA-Z0-9-]+)',
-        'tiktok': r'tiktok\.com/@([a-zA-Z0-9._]+)',
-        'facebook': r'facebook\.com/([a-zA-Z0-9.]+)',
-        'twitch': r'twitch\.tv/([a-zA-Z0-9_]+)',
-        'discord': r'discord\.(gg|com)/([a-zA-Z0-9]+)'
-    }
-    
-    def __init__(self):
-        self.session = requests.Session()
-        self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        })
-    
-    def build_graph(self, website_url: str, leader_name: str = None) -> Dict:
-        """Build social graph from website"""
-        result = {
-            'emails': [],
-            'social_links': {},
-            'personal_website': None,
-            'linktree_url': None
-        }
-        
-        if not website_url:
-            return result
-        
-        try:
-            is_aggregator = any(agg in website_url.lower() for agg in self.LINK_AGGREGATORS)
-            
-            if is_aggregator:
-                result['linktree_url'] = website_url
-                agg_data = self._scrape_link_aggregator(website_url)
-                result['social_links'].update(agg_data['social_links'])
-                result['emails'].extend(agg_data['emails'])
-                
-                if agg_data.get('personal_website'):
-                    result['personal_website'] = agg_data['personal_website']
-                    website_data = self._scrape_website(agg_data['personal_website'], leader_name)
-                    result['emails'].extend(website_data['emails'])
-                    result['social_links'].update(website_data['social_links'])
-            else:
-                website_data = self._scrape_website(website_url, leader_name)
-                result['emails'].extend(website_data['emails'])
-                result['social_links'].update(website_data['social_links'])
-                
-                if website_data.get('linktree_url'):
-                    result['linktree_url'] = website_data['linktree_url']
-                    agg_data = self._scrape_link_aggregator(website_data['linktree_url'])
-                    result['social_links'].update(agg_data['social_links'])
-            
-            result['emails'] = list(set(result['emails']))
-            
-            return result
-            
-        except Exception as e:
-            print(f"[SOCIAL_GRAPH] Error building graph: {e}")
-            return result
-    
-    def _scrape_website(self, url: str, leader_name: str = None) -> Dict:
-        """Scrape a regular website for emails and social links"""
-        result = {
-            'emails': [],
-            'social_links': {},
-            'linktree_url': None
-        }
-        
-        try:
-            response = self.session.get(url, timeout=10, allow_redirects=True)
-            if not response.ok:
-                return result
-            
-            soup = BeautifulSoup(response.text, 'html.parser')
-            text = soup.get_text()
-            
-            # Extract emails
-            email_pattern = r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
-            emails = re.findall(email_pattern, text)
-            
-            blocked_patterns = ['.png', '.jpg', '.gif', '.jpeg', '.webp', '.svg',
-                              'sentry.io', 'example.com', 'cloudfront', 'amazonaws']
-            result['emails'] = [
-                email.lower() for email in emails
-                if not any(pattern in email.lower() for pattern in blocked_patterns)
-            ]
-            
-            # Extract obfuscated emails
-            obfuscated_pattern = r'([a-zA-Z0-9._%+-]+)\s*(?:\[at\]|\(at\)|{at}|\bat\b)\s*([a-zA-Z0-9.-]+)\s*(?:\[dot\]|\(dot\)|{dot}|\.)\s*([a-zA-Z]{2,})'
-            obfuscated = re.findall(obfuscated_pattern, text, re.IGNORECASE)
-            for parts in obfuscated:
-                email = f"{parts[0]}@{parts[1]}.{parts[2]}".lower().replace(' ', '')
-                if '@' in email:
-                    result['emails'].append(email)
-            
-            # Extract mailto links
-            mailto_links = soup.find_all('a', href=re.compile(r'^mailto:'))
-            for link in mailto_links:
-                email = link['href'].replace('mailto:', '').split('?')[0].strip().lower()
-                if email and '@' in email:
-                    result['emails'].append(email)
-            
-            # Extract social links
-            all_links = soup.find_all('a', href=True)
-            for link in all_links:
-                href = link['href']
-                
-                if any(agg in href.lower() for agg in self.LINK_AGGREGATORS):
-                    result['linktree_url'] = href
-                
-                for platform, pattern in self.SOCIAL_PATTERNS.items():
-                    if platform in href.lower():
-                        match = re.search(pattern, href, re.IGNORECASE)
-                        if match:
-                            result['social_links'][platform] = href.split('?')[0]
-            
-            return result
-            
-        except Exception as e:
-            print(f"[SOCIAL_GRAPH] Error scraping website {url}: {e}")
-            return result
-    
-    def _scrape_link_aggregator(self, url: str) -> Dict:
-        """Scrape Linktree/Beacons for social links"""
-        result = {
-            'social_links': {},
-            'emails': [],
-            'personal_website': None
-        }
-        
-        try:
-            response = self.session.get(url, timeout=10, allow_redirects=True)
-            if not response.ok:
-                return result
-            
-            soup = BeautifulSoup(response.text, 'html.parser')
-            all_links = soup.find_all('a', href=True)
-            
-            skip_hosts = ['instagram.com', 'youtube.com', 'twitter.com', 'x.com',
-                         'facebook.com', 'tiktok.com', 'linkedin.com', 'twitch.tv',
-                         'patreon.com', 'spotify.com', 'apple.com', 'google.com']
-            
-            for link in all_links:
-                href = link['href']
-                
-                for platform, pattern in self.SOCIAL_PATTERNS.items():
-                    if platform in href.lower():
-                        match = re.search(pattern, href, re.IGNORECASE)
-                        if match:
-                            result['social_links'][platform] = href.split('?')[0]
-                
-                if href.startswith('http') and not any(skip in href.lower() for skip in skip_hosts):
-                    if not result['personal_website']:
-                        result['personal_website'] = href
-            
-            return result
-            
-        except Exception as e:
-            print(f"[SOCIAL_GRAPH] Error scraping aggregator {url}: {e}")
-            return result
+    print(f"[HUBSPOT] Import complete: {created_count} created, {skipped_count} skipped")
+    return {'created': created_count, 'skipped': skipped_count}
