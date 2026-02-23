@@ -2390,13 +2390,11 @@ class InsightIQDiscovery:
                     'state': location.get('state'),
                     'country': location.get('country'),
                     
-                    # Additional metadata
-                    'platform': platform,
-                    'is_verified': profile.get('is_verified', False),
-                    'audience_credibility': profile.get('audience_credibility_category'),
-                    
-                    # Discovery tracking
-                    'discovery_source': 'insightiq_discovery',
+                    # Metadata / channel tracking
+                    'flagship_social_platform': 'instagram',
+                    'channel':                  'Outbound',
+                    'channel_host_prospected':  'Phyllo',
+                    'funnel':                   'Creator',
 
                     # Triggers the HubSpot workflow → /api/webhook/enrich → AI scoring
                     'enrichment_status': 'pending',
@@ -2451,6 +2449,8 @@ def assign_bdr_round_robin(profiles: List[Dict], bdr_names: List[str]) -> List[D
         return profiles
     for i, profile in enumerate(profiles):
         profile['bdr_'] = emails[i % len(emails)]
+        # Mark for BDR review — cleared later for auto_enroll contacts by send_to_hubspot
+        profile['lead_list_fit'] = 'Not_reviewed'
     print(f"[BDR] Assigned {len(emails)} BDR(s) round-robin across {len(profiles)} profiles")
     return profiles
 
@@ -4869,8 +4869,11 @@ def standardize_patreon_profiles(profiles: List[Dict]) -> List[Dict]:
                 'patreon_description':  (profile.get('about')
                                          or profile.get('description')),
 
-                # ── Metadata ──────────────────────────────────────────
+                # ── Metadata / channel tracking ───────────────────────
                 'flagship_social_platform': 'patreon',
+                'channel':                  'Outbound',
+                'channel_host_prospected':  'Phyllo',
+                'funnel':                   'Community',
                 'email_validation_status':  profile.get('email_validation_status'),
             }
 
@@ -4917,8 +4920,11 @@ def standardize_facebook_profiles(profiles: List[Dict]) -> List[Dict]:
                 'facebook_group_size':        profile.get('member_count') or None,
                 'facebook_group_description': profile.get('description'),
 
-                # ── Metadata ─────────────────────────────────────────
+                # ── Metadata / channel tracking ───────────────────────
                 'flagship_social_platform': 'facebook_group',
+                'channel':                  'Outbound',
+                'channel_host_prospected':  'Phyllo',
+                'funnel':                   'Community',
                 'email_validation_status':  profile.get('email_validation_status'),
             }
 
