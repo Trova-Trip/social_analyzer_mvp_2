@@ -1143,8 +1143,8 @@ def start_instagram_discovery():
 
         # Validate BDR names
         bdr_names = user_filters.get('bdr_names', list(BDR_EMAILS.keys()))
-        if not bdr_names or not isinstance(bdr_names, list):
-            return jsonify({'error': 'At least one BDR must be selected'}), 400
+        if not isinstance(bdr_names, list):
+            bdr_names = []
         invalid_bdrs = [n for n in bdr_names if n not in BDR_EMAILS]
         if invalid_bdrs:
             return jsonify({'error': f'Unknown BDR name(s): {invalid_bdrs}'}), 400
@@ -1222,8 +1222,8 @@ def start_facebook_discovery():
 
         # Validate BDR names
         bdr_names = user_filters.get('bdr_names', list(BDR_EMAILS.keys()))
-        if not bdr_names or not isinstance(bdr_names, list):
-            return jsonify({'error': 'At least one BDR must be selected'}), 400
+        if not isinstance(bdr_names, list):
+            bdr_names = []
         invalid_bdrs = [n for n in bdr_names if n not in BDR_EMAILS]
         if invalid_bdrs:
             return jsonify({'error': f'Unknown BDR name(s): {invalid_bdrs}'}), 400
@@ -1291,8 +1291,8 @@ def start_patreon_discovery():
 
         # Validate BDR names
         bdr_names = user_filters.get('bdr_names', list(BDR_EMAILS.keys()))
-        if not bdr_names or not isinstance(bdr_names, list):
-            return jsonify({'error': 'At least one BDR must be selected'}), 400
+        if not isinstance(bdr_names, list):
+            bdr_names = []
         invalid_bdrs = [n for n in bdr_names if n not in BDR_EMAILS]
         if invalid_bdrs:
             return jsonify({'error': f'Unknown BDR name(s): {invalid_bdrs}'}), 400
