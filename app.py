@@ -25,6 +25,16 @@ INSIGHTIQ_API_URL = os.getenv('INSIGHTIQ_API_URL', 'https://api.sandbox.insighti
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 HUBSPOT_WEBHOOK_URL = os.getenv('HUBSPOT_WEBHOOK_URL')
 
+# BDR Round-Robin — valid display names and their corresponding HubSpot email values
+BDR_EMAILS = {
+    'Miriam Plascencia':   'miriamp@trovatrip.com',
+    'Majo Juarez':         'mariaj@trovatrip.com',
+    'Nicole Roma':         'nicolem@trovatrip.com',
+    'Salvatore Renteria':  'salvatore@trovatrip.com',
+    'Sofia Gonzalez':      'almag@trovatrip.com',
+    'Tanya Pina':          'tanyap@trovatrip.com',
+}
+
 # R2 Configuration
 R2_ACCESS_KEY_ID = os.getenv('R2_ACCESS_KEY_ID')
 R2_SECRET_ACCESS_KEY = os.getenv('R2_SECRET_ACCESS_KEY')
@@ -1130,7 +1140,16 @@ def start_instagram_discovery():
         
         if lookalike_type and not lookalike_username:
             return jsonify({'error': 'lookalike_username required when lookalike_type is set'}), 400
-        
+
+        # Validate BDR names
+        bdr_names = user_filters.get('bdr_names', list(BDR_EMAILS.keys()))
+        if not bdr_names or not isinstance(bdr_names, list):
+            return jsonify({'error': 'At least one BDR must be selected'}), 400
+        invalid_bdrs = [n for n in bdr_names if n not in BDR_EMAILS]
+        if invalid_bdrs:
+            return jsonify({'error': f'Unknown BDR name(s): {invalid_bdrs}'}), 400
+        user_filters['bdr_names'] = bdr_names
+
         # Queue discovery task
         task = discover_instagram_profiles.delay(user_filters=user_filters)
         job_id = str(task.id)
@@ -1200,7 +1219,16 @@ def start_facebook_discovery():
             return jsonify({'error': 'max_members must be an integer'}), 400
         if min_members and max_members and min_members >= max_members:
             return jsonify({'error': 'min_members must be less than max_members'}), 400
-        
+
+        # Validate BDR names
+        bdr_names = user_filters.get('bdr_names', list(BDR_EMAILS.keys()))
+        if not bdr_names or not isinstance(bdr_names, list):
+            return jsonify({'error': 'At least one BDR must be selected'}), 400
+        invalid_bdrs = [n for n in bdr_names if n not in BDR_EMAILS]
+        if invalid_bdrs:
+            return jsonify({'error': f'Unknown BDR name(s): {invalid_bdrs}'}), 400
+        user_filters['bdr_names'] = bdr_names
+
         # Queue discovery task
         task = discover_facebook_groups.delay(user_filters=user_filters)
         job_id = str(task.id)
@@ -1260,7 +1288,16 @@ def start_patreon_discovery():
             return jsonify({'error': 'max_results must be a positive integer'}), 400
         if max_results > 500:
             return jsonify({'error': 'max_results cannot exceed 500'}), 400
-        
+
+        # Validate BDR names
+        bdr_names = user_filters.get('bdr_names', list(BDR_EMAILS.keys()))
+        if not bdr_names or not isinstance(bdr_names, list):
+            return jsonify({'error': 'At least one BDR must be selected'}), 400
+        invalid_bdrs = [n for n in bdr_names if n not in BDR_EMAILS]
+        if invalid_bdrs:
+            return jsonify({'error': f'Unknown BDR name(s): {invalid_bdrs}'}), 400
+        user_filters['bdr_names'] = bdr_names
+
         # Queue discovery task
         task = discover_patreon_profiles.delay(user_filters=user_filters)
         job_id = str(task.id)
