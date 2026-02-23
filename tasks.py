@@ -5,7 +5,7 @@ import tempfile
 import base64
 import hashlib
 import time
-from typing import Dict, List, Any, Tuple
+from typing import Dict, List, Any, Tuple, Optional
 from datetime import datetime, timedelta
 import boto3
 from botocore.client import Config
