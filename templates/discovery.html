@@ -1,16 +1,12 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Instagram Discovery</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-</head>
-<body class="bg-gray-100">
-    <div class="container mx-auto p-6 max-w-3xl">
+{% extends 'base.html' %}
+{% set active_page = 'discovery' %}
+{% block title %}Discovery{% endblock %}
+
+{% block content %}
+    <div class="max-w-3xl mx-auto">
         <div class="mb-6">
-            <h1 class="text-3xl font-bold text-gray-900">🔍 Instagram Lead Discovery</h1>
-            <p class="text-gray-600 mt-2">Discover and import high-quality Instagram creators</p>
+            <h1 class="text-3xl font-bold" style="color:#005c69;">🔍 Creator Discovery</h1>
+            <p class="mt-2" style="color:#3c4858;">Discover and import high-quality creators across Instagram, Patreon, and Facebook</p>
         </div>
         
         <!-- Fixed Parameters Banner -->
@@ -493,7 +489,9 @@
             <div id="recent-jobs"></div>
         </div>
     </div>
-    
+{% endblock %}
+
+{% block scripts %}
   <script>
         // Platform switching
         let selectedPlatform = 'instagram'; // Default
@@ -973,5 +971,4 @@
             }, 3000); // Poll every 3 seconds
         }
     </script>
-</body>
-</html>
+{% endblock %}
