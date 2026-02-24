@@ -2263,7 +2263,28 @@ class InsightIQDiscovery:
         if 'hashtags' in user_filters and user_filters['hashtags']:
             parameters['hashtags'] = user_filters['hashtags']
             print(f"Hashtags: {parameters['hashtags']}")
-        
+
+        # Bio phrase filtering (Instagram only)
+        bio_phrase = (user_filters.get('bio_phrase') or '').strip()
+        if bio_phrase:
+            parameters['bio_phrase'] = bio_phrase
+            print(f"Bio phrase: {bio_phrase}")
+
+        bio_phrase_advanced = user_filters.get('bio_phrase_advanced') or []
+        if bio_phrase_advanced and isinstance(bio_phrase_advanced, list):
+            # Sanitise: keep only well-formed entries, cap at 14 (15 total incl. bio_phrase)
+            valid_actions = {'AND', 'OR', 'NOT'}
+            cleaned = [
+                {'bio_phrase': str(e['bio_phrase']).strip(), 'action': e['action']}
+                for e in bio_phrase_advanced
+                if isinstance(e, dict)
+                and e.get('bio_phrase', '').strip()
+                and e.get('action') in valid_actions
+            ][:14]
+            if cleaned:
+                parameters['bio_phrase_advanced'] = cleaned
+                print(f"Bio phrase advanced: {len(cleaned)} clause(s)")
+
         print(f"Starting {platform} discovery with fixed parameters...")
         
         job_id = self._start_job(parameters)
@@ -2557,18 +2578,29 @@ def discover_patreon_profiles(user_filters=None, job_id=None):
 
         user_filters = user_filters or {}
         search_keywords = user_filters.get('search_keywords', [])
-        max_results = user_filters.get('max_results', 100)
+        max_results     = user_filters.get('max_results', 100)
+        location        = (user_filters.get('location') or 'United States').strip()
+        min_patrons     = int(user_filters.get('min_patrons') or 0)
+        max_patrons     = int(user_filters.get('max_patrons') or 0)
+        min_posts       = int(user_filters.get('min_posts') or 0)
 
         if not search_keywords:
             raise ValueError("search_keywords required for Patreon discovery")
 
-        print(f"Starting Patreon discovery: keywords={search_keywords}, max={max_results}")
+        # Append location to each keyword so the Apify actor surfaces geo-relevant results
+        if location:
+            search_queries = [f"{kw} {location}" for kw in search_keywords]
+        else:
+            search_queries = list(search_keywords)
+
+        print(f"Starting Patreon discovery: queries={search_queries}, max={max_results}, "
+              f"min_patrons={min_patrons}, max_patrons={max_patrons}, min_posts={min_posts}")
 
         from apify_client import ApifyClient
         apify = ApifyClient(APIFY_API_TOKEN)
 
         run_input = {
-            "searchQueries": search_keywords,
+            "searchQueries": search_queries,
             "maxRequestsPerCrawl": max_results,
             "proxyConfiguration": {
                 "useApifyProxy": True,
@@ -2596,6 +2628,31 @@ def discover_patreon_profiles(user_filters=None, job_id=None):
             profiles.append(item)
 
         print(f"After NSFW filter: {len(profiles)} profiles (excluded {nsfw_count} NSFW)")
+
+        # Apply patron count filter
+        if min_patrons > 0 or max_patrons > 0:
+            before = len(profiles)
+            filtered = []
+            for p in profiles:
+                patron_count = int(p.get('patron_count') or p.get('total_members') or 0)
+                if min_patrons > 0 and patron_count < min_patrons:
+                    continue
+                if max_patrons > 0 and patron_count > max_patrons:
+                    continue
+                filtered.append(p)
+            profiles = filtered
+            print(f"After patron count filter ({min_patrons}-{max_patrons}): {len(profiles)} profiles "
+                  f"(excluded {before - len(profiles)})")
+
+        # Apply minimum posts filter
+        if min_posts > 0:
+            before = len(profiles)
+            profiles = [
+                p for p in profiles
+                if int(p.get('post_count') or p.get('total_posts') or p.get('posts_count') or 0) >= min_posts
+            ]
+            print(f"After min_posts filter (>={min_posts}): {len(profiles)} profiles "
+                  f"(excluded {before - len(profiles)})")
 
         if not profiles:
             warning_msg = (
@@ -2684,22 +2741,31 @@ def discover_facebook_groups(user_filters=None, job_id=None):
             raise ValueError("APIFY_API_TOKEN must be set")
 
         user_filters = user_filters or {}
-        keywords   = user_filters.get('keywords', [])
-        max_results = user_filters.get('max_results', 100)
-        min_members = user_filters.get('min_members', 0)
-        max_members = user_filters.get('max_members', 0)
+        keywords            = user_filters.get('keywords', [])
+        max_results         = user_filters.get('max_results', 100)
+        min_members         = int(user_filters.get('min_members') or 0)
+        max_members         = int(user_filters.get('max_members') or 0)
+        visibility          = user_filters.get('visibility', 'all')   # 'all'|'public'|'private'
+        min_posts_per_month = int(user_filters.get('min_posts_per_month') or 0)
 
         if not keywords:
             raise ValueError("keywords required for Facebook Groups discovery")
 
-        print(f"Facebook Groups discovery: keywords={keywords}, max={max_results}")
+        print(f"Facebook Groups discovery: keywords={keywords}, max={max_results}, "
+              f"visibility={visibility}, min_posts/month={min_posts_per_month}")
 
-        # Expand keywords into Google queries
+        # Expand keywords into Google queries, optionally scoping by visibility
+        vis_suffix = ''
+        if visibility == 'public':
+            vis_suffix = ' "public group"'
+        elif visibility == 'private':
+            vis_suffix = ' "private group"'
+
         google_queries = []
         for kw in keywords:
-            google_queries.append(f'site:facebook.com/groups "{kw}"')
-            google_queries.append(f'site:facebook.com/groups {kw} community')
-            google_queries.append(f'site:facebook.com/groups {kw} group')
+            google_queries.append(f'site:facebook.com/groups "{kw}"{vis_suffix}')
+            google_queries.append(f'site:facebook.com/groups {kw} community{vis_suffix}')
+            google_queries.append(f'site:facebook.com/groups {kw} group{vis_suffix}')
 
         # Cap at 15 queries to keep cost reasonable
         google_queries = google_queries[:15]
@@ -2756,20 +2822,33 @@ def discover_facebook_groups(user_filters=None, job_id=None):
                 if max_members > 0 and member_count > max_members:
                     continue
 
+                # Visibility filter — cross-check snippet text
+                combined_text = (title + ' ' + snippet).lower()
+                if visibility == 'public' and 'private group' in combined_text:
+                    continue
+                if visibility == 'private' and 'public group' in combined_text:
+                    continue
+
+                # Best-effort posts/month extraction from snippet
+                posts_per_month = _extract_posts_per_month(snippet)
+                if min_posts_per_month > 0 and posts_per_month is not None and posts_per_month < min_posts_per_month:
+                    continue
+
                 profiles.append({
-                    'group_name':    group_name,
-                    'group_url':     group_url,
-                    'description':   snippet[:2000],
-                    'member_count':  member_count,
+                    'group_name':        group_name,
+                    'group_url':         group_url,
+                    'description':       snippet[:2000],
+                    'member_count':      member_count,
+                    'posts_per_month':   posts_per_month,
                     # Fields expected by enrichment pipeline
-                    'url':           group_url,   # used by social graph builder
-                    'creator_name':  '',          # populated by Apollo if found
-                    'instagram_url': None,
-                    'youtube_url':   None,
-                    'twitter_url':   None,
-                    'facebook_url':  group_url,
-                    'tiktok_url':    None,
-                    'personal_website': None,
+                    'url':               group_url,   # used by social graph builder
+                    'creator_name':      '',          # populated by Apollo if found
+                    'instagram_url':     None,
+                    'youtube_url':       None,
+                    'twitter_url':       None,
+                    'facebook_url':      group_url,
+                    'tiktok_url':        None,
+                    'personal_website':  None,
                 })
 
         print(f"Facebook Groups discovery: {len(profiles)} groups found")
@@ -4423,6 +4502,48 @@ def _extract_facebook_group_url(raw_url: str) -> str:
         return url
     except Exception:
         return raw_url
+
+
+def _extract_posts_per_month(text: str):
+    """
+    Best-effort extraction of posts per month from a Google snippet.
+
+    Handles phrases like:
+      '10 posts a month', '3 posts per week', '2 posts per day', '50 posts this month',
+      '5 posts a week', '1 post per day'
+
+    Returns an integer estimate of posts per month, or None if not found.
+    """
+    if not text:
+        return None
+
+    text_lower = text.lower()
+
+    # Try "X posts a/per month" or "X posts this month"
+    m = re.search(r'(\d+(?:[\.,]\d+)?)\s+posts?\s+(?:a|per|this)\s+month', text_lower)
+    if m:
+        try:
+            return int(float(m.group(1).replace(',', '.')))
+        except ValueError:
+            pass
+
+    # Try "X posts a/per week" → multiply by ~4.3
+    m = re.search(r'(\d+(?:[\.,]\d+)?)\s+posts?\s+(?:a|per)\s+week', text_lower)
+    if m:
+        try:
+            return int(float(m.group(1).replace(',', '.')) * 4.3)
+        except ValueError:
+            pass
+
+    # Try "X posts a/per day" → multiply by ~30
+    m = re.search(r'(\d+(?:[\.,]\d+)?)\s+posts?\s+(?:a|per)\s+day', text_lower)
+    if m:
+        try:
+            return int(float(m.group(1).replace(',', '.')) * 30)
+        except ValueError:
+            pass
+
+    return None
 
 
 def _extract_member_count(text: str) -> int:
