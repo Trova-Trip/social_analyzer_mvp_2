@@ -26,13 +26,13 @@ OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 HUBSPOT_WEBHOOK_URL = os.getenv('HUBSPOT_WEBHOOK_URL')
 
 # BDR Round-Robin — valid display names and their corresponding HubSpot email values
-BDR_EMAILS = {
-    'Miriam Plascencia':   'miriamp@trovatrip.com',
-    'Majo Juarez':         'mariaj@trovatrip.com',
-    'Nicole Roma':         'nicolem@trovatrip.com',
-    'Salvatore Renteria':  'salvatore@trovatrip.com',
-    'Sofia Gonzalez':      'almag@trovatrip.com',
-    'Tanya Pina':          'tanyap@trovatrip.com',
+BDR_OWNER_IDS = {
+    'Miriam Plascencia':   '83266567',
+    'Majo Juarez':         '79029958',
+    'Nicole Roma':         '83266570',
+    'Salvatore Renteria':  '81500975',
+    'Sofia Gonzalez':      '79029956',
+    'Tanya Pina':          '83266565',
 }
 
 # R2 Configuration
@@ -1142,10 +1142,10 @@ def start_instagram_discovery():
             return jsonify({'error': 'lookalike_username required when lookalike_type is set'}), 400
 
         # Validate BDR names
-        bdr_names = user_filters.get('bdr_names', list(BDR_EMAILS.keys()))
+        bdr_names = user_filters.get('bdr_names', list(BDR_OWNER_IDS.keys()))
         if not isinstance(bdr_names, list):
             bdr_names = []
-        invalid_bdrs = [n for n in bdr_names if n not in BDR_EMAILS]
+        invalid_bdrs = [n for n in bdr_names if n not in BDR_OWNER_IDS]
         if invalid_bdrs:
             return jsonify({'error': f'Unknown BDR name(s): {invalid_bdrs}'}), 400
         user_filters['bdr_names'] = bdr_names
@@ -1244,10 +1244,10 @@ def start_facebook_discovery():
             return jsonify({'error': 'min_posts_per_month must be an integer'}), 400
 
         # Validate BDR names
-        bdr_names = user_filters.get('bdr_names', list(BDR_EMAILS.keys()))
+        bdr_names = user_filters.get('bdr_names', list(BDR_OWNER_IDS.keys()))
         if not isinstance(bdr_names, list):
             bdr_names = []
-        invalid_bdrs = [n for n in bdr_names if n not in BDR_EMAILS]
+        invalid_bdrs = [n for n in bdr_names if n not in BDR_OWNER_IDS]
         if invalid_bdrs:
             return jsonify({'error': f'Unknown BDR name(s): {invalid_bdrs}'}), 400
         user_filters['bdr_names'] = bdr_names
@@ -1334,10 +1334,10 @@ def start_patreon_discovery():
             return jsonify({'error': 'min_posts must be an integer'}), 400
 
         # Validate BDR names
-        bdr_names = user_filters.get('bdr_names', list(BDR_EMAILS.keys()))
+        bdr_names = user_filters.get('bdr_names', list(BDR_OWNER_IDS.keys()))
         if not isinstance(bdr_names, list):
             bdr_names = []
-        invalid_bdrs = [n for n in bdr_names if n not in BDR_EMAILS]
+        invalid_bdrs = [n for n in bdr_names if n not in BDR_OWNER_IDS]
         if invalid_bdrs:
             return jsonify({'error': f'Unknown BDR name(s): {invalid_bdrs}'}), 400
         user_filters['bdr_names'] = bdr_names
