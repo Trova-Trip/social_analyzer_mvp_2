@@ -70,19 +70,23 @@
 
                 <!-- Facebook Groups Filters (hidden by default) -->
                 <div id="facebook-filters" class="hidden">
-                    <!-- Keywords -->
+                    <!-- Keywords (tag-style) -->
                     <div>
                         <label class="block text-sm font-bold text-gray-700 mb-2">
                             Search Keywords
                         </label>
-                        <input type="text" id="facebook-keywords" 
-                               placeholder="e.g., running, fitness, book club (comma-separated)"
-                               class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                        <div id="facebook-keyword-wrapper"
+                             class="tag-input-wrapper border border-gray-300 rounded-lg p-2 focus-within:ring-2 focus-within:ring-blue-500 min-h-[42px] flex flex-wrap gap-1 items-start cursor-text"
+                             onclick="document.getElementById('facebook-keyword-input').focus()">
+                            <input type="text" id="facebook-keyword-input"
+                                   placeholder="Type keyword and press Enter…"
+                                   class="flex-1 min-w-[180px] outline-none text-sm py-1 bg-transparent">
+                        </div>
                         <p class="text-xs text-gray-500 mt-1">
-                            Enter keywords to search Facebook groups. Separate multiple keywords with commas.
+                            Type a keyword or phrase and press <kbd class="px-1 py-0.5 bg-gray-100 border border-gray-300 rounded text-xs">Enter</kbd> to add it. Click <strong>×</strong> to remove.
                         </p>
                     </div>
-                    
+
                     <!-- Max Results -->
                     <div>
                         <label class="block text-sm font-bold text-gray-700 mb-2">Max Results</label>
@@ -90,10 +94,10 @@
                                class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
                         <p class="text-xs text-gray-500 mt-1">Maximum: 500 groups (typical: 50-100)</p>
                     </div>
-                    
+
                     <!-- Member Count Range -->
                     <div>
-                        <label class="block text-sm font-bold text-gray-700 mb-2">Member Count (Optional)</label>
+                        <label class="block text-sm font-bold text-gray-700 mb-2">Member Count <span class="text-gray-500 font-normal">(Optional)</span></label>
                         <div class="grid grid-cols-2 gap-4">
                             <div>
                                 <label class="block text-xs text-gray-600 mb-1">Minimum</label>
@@ -108,7 +112,27 @@
                         </div>
                         <p class="text-xs text-gray-500 mt-1">Leave at 0 to skip filtering by member count</p>
                     </div>
-                    
+
+                    <!-- Group Visibility -->
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-2">Group Visibility <span class="text-gray-500 font-normal">(Optional)</span></label>
+                        <select id="facebook-visibility"
+                                class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white">
+                            <option value="all">All groups</option>
+                            <option value="public">Public groups only</option>
+                            <option value="private">Private groups only</option>
+                        </select>
+                        <p class="text-xs text-gray-500 mt-1">Filter based on group type reported in Google search snippets</p>
+                    </div>
+
+                    <!-- Min Posts Per Month -->
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-2">Minimum Posts / Month <span class="text-gray-500 font-normal">(Optional)</span></label>
+                        <input type="number" id="facebook-min-posts-month" value="" min="0" step="1" placeholder="e.g. 10"
+                               class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                        <p class="text-xs text-gray-500 mt-1">Best-effort — parsed from Google snippet when available. Leave blank to skip.</p>
+                    </div>
+
                     <!-- Enrichment Notice -->
                     <div class="bg-blue-50 border-l-4 border-blue-500 p-4">
                         <div class="flex">
@@ -119,8 +143,8 @@
                             </div>
                             <div class="ml-3">
                                 <p class="text-sm text-blue-800">
-                                    <strong>Social Graph Enrichment:</strong> We'll automatically crawl group websites 
-                                    for emails, social profiles (Instagram, YouTube, Twitter), and use Apollo.io 
+                                    <strong>Social Graph Enrichment:</strong> We'll automatically crawl group websites
+                                    for emails, social profiles (Instagram, YouTube, Twitter), and use Apollo.io
                                     to find leader contact information.
                                 </p>
                             </div>
@@ -282,9 +306,33 @@
                             
                             <div>
                                 <label class="block text-sm font-bold text-gray-700 mb-2">Hashtags</label>
-                                <input type="text" id="hashtags" 
+                                <input type="text" id="hashtags"
                                        placeholder="e.g., travel, wanderlust (comma-separated)"
                                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                            </div>
+
+                            <!-- Bio Phrase Advanced -->
+                            <div>
+                                <label class="block text-sm font-bold text-gray-700 mb-1">Bio Phrase Filter</label>
+                                <p class="text-xs text-gray-500 mb-2">Filter by words or phrases in the creator's bio. Chain up to 15 phrases using AND / OR / NOT.</p>
+
+                                <div id="bio-phrase-rows" class="space-y-2">
+                                    <!-- Row 0: base bio_phrase (always visible) -->
+                                    <div class="flex items-center gap-2" id="bio-row-0">
+                                        <input type="text" id="bio-phrase-0"
+                                               placeholder="e.g., travel guide"
+                                               class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                    </div>
+
+                                    <!-- Action + phrase rows are injected by JS below -->
+                                </div>
+
+                                <!-- "Add clause" button — hidden once cap is hit -->
+                                <button type="button" id="bio-add-btn"
+                                        onclick="bioAddClause()"
+                                        class="mt-2 text-xs text-blue-600 hover:text-blue-800 font-medium hidden">
+                                    + Add AND / OR / NOT clause
+                                </button>
                             </div>
                         </div>
                     </details>
@@ -292,25 +340,63 @@
                 
                 <!-- Patreon Filters (hidden by default) -->
                 <div id="patreon-filters" class="hidden">
-                    <!-- Keywords -->
+                    <!-- Keywords (tag-style) -->
                     <div>
                         <label class="block text-sm font-bold text-gray-700 mb-2">
                             Search Keywords
                         </label>
-                        <input type="text" id="patreon-keywords" 
-                               placeholder="e.g., art, gaming, podcast (comma-separated)"
-                               class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                        <div id="patreon-keyword-wrapper"
+                             class="tag-input-wrapper border border-gray-300 rounded-lg p-2 focus-within:ring-2 focus-within:ring-blue-500 min-h-[42px] flex flex-wrap gap-1 items-start cursor-text"
+                             onclick="document.getElementById('patreon-keyword-input').focus()">
+                            <input type="text" id="patreon-keyword-input"
+                                   placeholder="Type keyword and press Enter…"
+                                   class="flex-1 min-w-[180px] outline-none text-sm py-1 bg-transparent">
+                        </div>
                         <p class="text-xs text-gray-500 mt-1">
-                            Enter keywords to search Patreon creators. Separate multiple keywords with commas.
+                            Type a keyword or phrase and press <kbd class="px-1 py-0.5 bg-gray-100 border border-gray-300 rounded text-xs">Enter</kbd> to add it. Click <strong>×</strong> to remove.
                         </p>
                     </div>
-                    
+
                     <!-- Max Results -->
                     <div>
                         <label class="block text-sm font-bold text-gray-700 mb-2">Max Results</label>
                         <input type="number" id="patreon-max-results" value="100" min="1" max="500" step="1"
                                class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
                         <p class="text-xs text-gray-500 mt-1">Maximum: 500 profiles (typical: 50-100)</p>
+                    </div>
+
+                    <!-- Location -->
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-2">Location <span class="text-gray-500 font-normal">(Optional)</span></label>
+                        <input type="text" id="patreon-location" value="United States" placeholder="e.g., United States"
+                               class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                        <p class="text-xs text-gray-500 mt-1">Appended to each search query to focus results by geography. Clear to search globally.</p>
+                    </div>
+
+                    <!-- Patron Count Range -->
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-2">Patron Count <span class="text-gray-500 font-normal">(Optional)</span></label>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs text-gray-600 mb-1">Minimum</label>
+                                <input type="number" id="patreon-min-patrons" value="" min="0" step="10" placeholder="e.g. 50"
+                                       class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-600 mb-1">Maximum</label>
+                                <input type="number" id="patreon-max-patrons" value="" min="0" step="100" placeholder="e.g. 5000"
+                                       class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                            </div>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-1">Leave blank to skip filtering by patron count</p>
+                    </div>
+
+                    <!-- Minimum Posts -->
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-2">Minimum Posts <span class="text-gray-500 font-normal">(Optional)</span></label>
+                        <input type="number" id="patreon-min-posts" value="" min="0" step="1" placeholder="e.g. 5"
+                               class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                        <p class="text-xs text-gray-500 mt-1">Filter creators by total number of posts published. Leave blank to skip.</p>
                     </div>
                 </div>
                 
@@ -468,6 +554,150 @@
             return Array.from(document.querySelectorAll('.bdr-checkbox:checked')).map(cb => cb.value);
         }
 
+        // ── Tag-style Keyword Inputs ──────────────────────────────────────
+        // Shared state: wrapperId → string[]
+        const _tagState = {};
+
+        function initTagInput(wrapperId, inputId) {
+            if (!_tagState[wrapperId]) _tagState[wrapperId] = [];
+            const inp = document.getElementById(inputId);
+            inp.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const val = this.value.trim();
+                    if (val) {
+                        _tagState[wrapperId].push(val);
+                        this.value = '';
+                        _renderTags(wrapperId, inputId);
+                    }
+                }
+            });
+        }
+
+        function _renderTags(wrapperId, inputId) {
+            const wrapper = document.getElementById(wrapperId);
+            const inp = document.getElementById(inputId);
+            // Remove existing tag spans (everything except the input)
+            Array.from(wrapper.children).forEach(child => {
+                if (child !== inp) child.remove();
+            });
+            // Re-insert tag spans before the input
+            _tagState[wrapperId].forEach((tag, i) => {
+                const span = document.createElement('span');
+                span.className = 'inline-flex items-center gap-1 bg-blue-100 text-blue-800 text-xs font-medium px-2 py-1 rounded';
+                span.innerHTML = `${escapeHtml(tag)} <button type="button" onclick="_removeTag('${wrapperId}','${inputId}',${i})" class="text-blue-500 hover:text-blue-900 font-bold leading-none">&times;</button>`;
+                wrapper.insertBefore(span, inp);
+            });
+        }
+
+        function _removeTag(wrapperId, inputId, index) {
+            _tagState[wrapperId].splice(index, 1);
+            _renderTags(wrapperId, inputId);
+        }
+
+        function getTagValues(wrapperId) {
+            return (_tagState[wrapperId] || []).slice();
+        }
+
+        function escapeHtml(str) {
+            return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        }
+
+        // Initialise tag inputs on page load
+        initTagInput('patreon-keyword-wrapper',  'patreon-keyword-input');
+        initTagInput('facebook-keyword-wrapper', 'facebook-keyword-input');
+
+        // ── Bio Phrase Advanced ───────────────────────────────────────────
+        const BIO_MAX = 15;   // total phrases including the base phrase
+
+        // Show the "Add clause" button only when the base phrase has content
+        document.getElementById('bio-phrase-0').addEventListener('input', function () {
+            const addBtn = document.getElementById('bio-add-btn');
+            const rowCount = document.querySelectorAll('#bio-phrase-rows .bio-action-row').length + 1;
+            addBtn.classList.toggle('hidden', !this.value.trim() || rowCount >= BIO_MAX);
+        });
+
+        function bioAddClause() {
+            const rowCount = document.querySelectorAll('#bio-phrase-rows .bio-action-row').length + 1;
+            if (rowCount >= BIO_MAX) return;
+
+            const idx = rowCount; // 1-based index for advanced clauses
+            const container = document.getElementById('bio-phrase-rows');
+
+            const row = document.createElement('div');
+            row.className = 'bio-action-row flex items-center gap-2';
+            row.id = `bio-row-${idx}`;
+
+            // Action selector (always visible when row is created)
+            const select = document.createElement('select');
+            select.id = `bio-action-${idx}`;
+            select.className = 'border border-gray-300 rounded-lg px-2 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent';
+            select.innerHTML = `
+                <option value="" disabled selected>Action</option>
+                <option value="AND">AND</option>
+                <option value="OR">OR</option>
+                <option value="NOT">NOT</option>`;
+
+            // Phrase input — hidden until action is chosen
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.id = `bio-phrase-${idx}`;
+            input.placeholder = 'phrase…';
+            input.className = 'flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent hidden';
+
+            // Remove button
+            const removeBtn = document.createElement('button');
+            removeBtn.type = 'button';
+            removeBtn.className = 'text-gray-400 hover:text-red-500 text-lg leading-none';
+            removeBtn.title = 'Remove clause';
+            removeBtn.textContent = '×';
+            removeBtn.onclick = () => { row.remove(); bioRefreshAddBtn(); };
+
+            // Show phrase input once an action is selected
+            select.addEventListener('change', function () {
+                input.classList.toggle('hidden', !this.value);
+                bioRefreshAddBtn();
+            });
+
+            row.appendChild(select);
+            row.appendChild(input);
+            row.appendChild(removeBtn);
+            container.appendChild(row);
+
+            // Hide the add button after inserting (re-evaluated by bioRefreshAddBtn)
+            bioRefreshAddBtn();
+        }
+
+        function bioRefreshAddBtn() {
+            const addBtn = document.getElementById('bio-add-btn');
+            const rows = document.querySelectorAll('#bio-phrase-rows .bio-action-row');
+            const total = 1 + rows.length;   // base phrase + advanced rows
+            const baseHasValue = document.getElementById('bio-phrase-0').value.trim();
+
+            // Show add button only if: base has a value, cap not reached,
+            // AND the last row's action has been chosen (its phrase input is visible)
+            let lastActionChosen = true;
+            if (rows.length > 0) {
+                const lastRow = rows[rows.length - 1];
+                const lastInput = lastRow.querySelector('input[type="text"]');
+                lastActionChosen = lastInput && !lastInput.classList.contains('hidden');
+            }
+
+            addBtn.classList.toggle('hidden', !baseHasValue || total >= BIO_MAX || !lastActionChosen);
+        }
+
+        function getBioPhrases() {
+            const base = document.getElementById('bio-phrase-0').value.trim();
+            const advanced = [];
+            document.querySelectorAll('#bio-phrase-rows .bio-action-row').forEach(row => {
+                const idx = row.id.replace('bio-row-', '');
+                const action = document.getElementById(`bio-action-${idx}`)?.value;
+                const phrase = document.getElementById(`bio-phrase-${idx}`)?.value.trim();
+                if (action && phrase) advanced.push({ bio_phrase: phrase, action });
+            });
+            return { base, advanced };
+        }
+
         // Lookalike username enable/disable
         document.querySelectorAll('input[name="lookalike-type"]').forEach(radio => {
             radio.addEventListener('change', function() {
@@ -544,6 +774,15 @@
                 filters.hashtags = hashtags.split(',').map(h => ({name: h.trim()})).filter(h => h.name);
             }
 
+            // Add bio phrase filter if provided
+            const { base: bioPhraseBase, advanced: bioPhraseAdvanced } = getBioPhrases();
+            if (bioPhraseBase) {
+                filters.bio_phrase = bioPhraseBase;
+                if (bioPhraseAdvanced.length > 0) {
+                    filters.bio_phrase_advanced = bioPhraseAdvanced;
+                }
+            }
+
             // BDR round-robin
             const bdrNames = getBdrNames();
 
@@ -571,24 +810,37 @@
         }
         
         async function submitPatreonDiscovery() {
-            // Get keywords
-            const keywords = document.getElementById('patreon-keywords').value.trim();
-            
-            if (!keywords) {
+            // Get keywords from tag input
+            const searchKeywords = getTagValues('patreon-keyword-wrapper');
+
+            if (searchKeywords.length === 0) {
                 alert('Please enter at least one search keyword');
                 return;
             }
-            
+
             // Build filters
             const filters = {
-                search_keywords: keywords.split(',').map(k => k.trim()).filter(Boolean),
+                search_keywords: searchKeywords,
                 max_results: parseInt(document.getElementById('patreon-max-results').value)
             };
-            
-            if (filters.search_keywords.length === 0) {
-                alert('Please enter at least one search keyword');
+
+            // Location (optional, default "United States")
+            const location = document.getElementById('patreon-location').value.trim();
+            if (location) filters.location = location;
+
+            // Patron count range (optional)
+            const minPatrons = parseInt(document.getElementById('patreon-min-patrons').value) || 0;
+            const maxPatrons = parseInt(document.getElementById('patreon-max-patrons').value) || 0;
+            if (minPatrons > 0) filters.min_patrons = minPatrons;
+            if (maxPatrons > 0) filters.max_patrons = maxPatrons;
+            if (minPatrons > 0 && maxPatrons > 0 && minPatrons >= maxPatrons) {
+                alert('Minimum patron count must be less than maximum');
                 return;
             }
+
+            // Minimum posts (optional)
+            const minPosts = parseInt(document.getElementById('patreon-min-posts').value) || 0;
+            if (minPosts > 0) filters.min_posts = minPosts;
 
             // BDR round-robin
             const bdrNames = getBdrNames();
@@ -617,41 +869,37 @@
         }
         
         async function submitFacebookDiscovery() {
-            // Get keywords
-            const keywords = document.getElementById('facebook-keywords').value.trim();
-            
-            if (!keywords) {
+            // Get keywords from tag input
+            const keywords = getTagValues('facebook-keyword-wrapper');
+
+            if (keywords.length === 0) {
                 alert('Please enter at least one search keyword');
                 return;
             }
-            
+
             // Build filters
             const filters = {
-                keywords: keywords.split(',').map(k => k.trim()).filter(Boolean),
+                keywords: keywords,
                 max_results: parseInt(document.getElementById('facebook-max-results').value)
             };
-            
-            if (filters.keywords.length === 0) {
-                alert('Please enter at least one search keyword');
-                return;
-            }
-            
-            // Add optional member count filters
+
+            // Member count range (optional)
             const minMembers = parseInt(document.getElementById('facebook-min-members').value) || 0;
             const maxMembers = parseInt(document.getElementById('facebook-max-members').value) || 0;
-            
-            if (minMembers > 0) {
-                filters.min_members = minMembers;
-            }
-            if (maxMembers > 0) {
-                filters.max_members = maxMembers;
-            }
-            
-            // Validate member count
+            if (minMembers > 0) filters.min_members = minMembers;
+            if (maxMembers > 0) filters.max_members = maxMembers;
             if (minMembers > 0 && maxMembers > 0 && minMembers >= maxMembers) {
                 alert('Minimum members must be less than maximum members');
                 return;
             }
+
+            // Visibility (optional)
+            const visibility = document.getElementById('facebook-visibility').value;
+            if (visibility && visibility !== 'all') filters.visibility = visibility;
+
+            // Min posts per month (optional)
+            const minPostsMonth = parseInt(document.getElementById('facebook-min-posts-month').value) || 0;
+            if (minPostsMonth > 0) filters.min_posts_per_month = minPostsMonth;
 
             // BDR round-robin
             const bdrNames = getBdrNames();
