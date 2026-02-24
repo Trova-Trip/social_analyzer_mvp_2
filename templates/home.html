@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% set active_page = "home" %}
+
+{% block title %}Home{% endblock %}
+
+{% block content %}
+<!-- Hero -->
+<div class="mb-8">
+    <h1 class="text-3xl font-bold" style="color:#005c69;">Lead Discovery</h1>
+    <p class="mt-1 text-sm" style="color:#3c4858;opacity:0.7;">Find, enrich, and import high-quality creators into HubSpot</p>
+</div>
+
+<!-- Nav cards grid -->
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-5 mb-8">
+
+    <!-- Discovery -->
+    <a href="/discovery" class="card p-6 flex items-start gap-4 hover:shadow-md transition-shadow group">
+        <div class="text-4xl">🔍</div>
+        <div class="flex-1">
+            <div class="font-bold text-lg" style="color:#005c69;">New Discovery</div>
+            <div class="text-sm mt-1" style="color:#3c4858;opacity:0.7;">Launch a new Instagram, Patreon, or Facebook Groups discovery run</div>
+        </div>
+        <div class="text-gray-300 group-hover:text-teal transition-colors text-xl">→</div>
+    </a>
+
+    <!-- Instagram -->
+    <a href="/monitor/instagram" class="card p-6 flex items-start gap-4 hover:shadow-md transition-shadow group">
+        <div class="text-4xl">📸</div>
+        <div class="flex-1">
+            <div class="font-bold text-lg" style="color:#005c69;">Instagram Monitor</div>
+            <div class="text-sm mt-1" style="color:#3c4858;opacity:0.7;">Batch processing queue, tier distribution &amp; scoring pipeline</div>
+            <div class="mt-3 flex items-center gap-2">
+                <span class="text-xs font-medium px-2 py-0.5 rounded-full" style="background:#e0f7fa;color:#005c69;" id="home-ig-queue">— queued</span>
+            </div>
+        </div>
+        <div class="text-gray-300 group-hover:text-teal transition-colors text-xl">→</div>
+    </a>
+
+    <!-- Patreon -->
+    <a href="/monitor/patreon" class="card p-6 flex items-start gap-4 hover:shadow-md transition-shadow group">
+        <div class="text-4xl">🎨</div>
+        <div class="flex-1">
+            <div class="font-bold text-lg" style="color:#005c69;">Patreon Monitor</div>
+            <div class="text-sm mt-1" style="color:#3c4858;opacity:0.7;">Pipeline stage tracker for Patreon creator discovery jobs</div>
+            <div class="mt-3 flex items-center gap-2">
+                <span class="text-xs font-medium px-2 py-0.5 rounded-full" style="background:#e0f7fa;color:#005c69;" id="home-pt-status">—</span>
+            </div>
+        </div>
+        <div class="text-gray-300 group-hover:text-teal transition-colors text-xl">→</div>
+    </a>
+
+    <!-- Facebook -->
+    <a href="/monitor/facebook" class="card p-6 flex items-start gap-4 hover:shadow-md transition-shadow group">
+        <div class="text-4xl">👥</div>
+        <div class="flex-1">
+            <div class="font-bold text-lg" style="color:#005c69;">Facebook Groups Monitor</div>
+            <div class="text-sm mt-1" style="color:#3c4858;opacity:0.7;">Pipeline stage tracker for Facebook Groups discovery jobs</div>
+            <div class="mt-3 flex items-center gap-2">
+                <span class="text-xs font-medium px-2 py-0.5 rounded-full" style="background:#e0f7fa;color:#005c69;" id="home-fb-status">—</span>
+            </div>
+        </div>
+        <div class="text-gray-300 group-hover:text-teal transition-colors text-xl">→</div>
+    </a>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function refreshHomeBadges() {
+    // Instagram queue size
+    try {
+        const r = await fetch('/api/stats');
+        const d = await r.json();
+        document.getElementById('home-ig-queue').textContent = `${d.queue_size} queued`;
+    } catch(e) {}
+
+    // Patreon latest job
+    try {
+        const r = await fetch('/api/monitor/jobs/patreon');
+        const jobs = await r.json();
+        const el = document.getElementById('home-pt-status');
+        if (jobs.length) {
+            const j = jobs[0];
+            el.textContent = j.status;
+            el.style.background = j.status === 'completed' ? '#d1fae5' : j.status === 'failed' ? '#fee2e2' : '#e0f7fa';
+            el.style.color     = j.status === 'completed' ? '#065f46' : j.status === 'failed' ? '#991b1b' : '#005c69';
+        } else { el.textContent = 'No jobs yet'; }
+    } catch(e) {}
+
+    // Facebook latest job
+    try {
+        const r = await fetch('/api/monitor/jobs/facebook');
+        const jobs = await r.json();
+        const el = document.getElementById('home-fb-status');
+        if (jobs.length) {
+            const j = jobs[0];
+            el.textContent = j.status;
+            el.style.background = j.status === 'completed' ? '#d1fae5' : j.status === 'failed' ? '#fee2e2' : '#e0f7fa';
+            el.style.color     = j.status === 'completed' ? '#065f46' : j.status === 'failed' ? '#991b1b' : '#005c69';
+        } else { el.textContent = 'No jobs yet'; }
+    } catch(e) {}
+}
+refreshHomeBadges();
+setInterval(refreshHomeBadges, 10000);
+</script>
+{% endblock %}
