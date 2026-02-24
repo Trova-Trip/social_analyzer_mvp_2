@@ -2472,7 +2472,7 @@ def assign_bdr_round_robin(profiles: List[Dict], bdr_names: List[str]) -> List[D
         profile['bdr_'] = owner_ids[i % len(owner_ids)]
         # Mark for BDR review — cleared later for auto_enroll contacts by send_to_hubspot
         profile['lead_list_fit'] = 'Not_reviewed'
-    print(f"[BDR] Assigned {len(emails)} BDR(s) round-robin across {len(profiles)} profiles")
+    print(f"[BDR] Assigned {len(owner_ids)} BDR(s) round-robin across {len(profiles)} profiles")
     return profiles
 
 
