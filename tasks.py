@@ -4216,7 +4216,7 @@ async function pageFunction(context) {
         for batch_start in range(0, len(queries), BATCH_SIZE):
             batch = queries[batch_start: batch_start + BATCH_SIZE]
             actor_input = {
-                'queries':        [{'term': q['term']} for q in batch],
+                'queries':        '\n'.join(q['term'] for q in batch),
                 'resultsPerPage': 5,
                 'maxPagesPerQuery': 1,
                 'outputAsJSON':   True,
@@ -4996,7 +4996,6 @@ def standardize_patreon_profiles(profiles: List[Dict]) -> List[Dict]:
                 'channel':                  'Outbound',
                 'channel_host_prospected':  'Phyllo',
                 'funnel':                   'Community',
-                'email_validation_status':  profile.get('email_validation_status'),
             }
 
             # Drop None / empty-string / zero values
@@ -5047,7 +5046,6 @@ def standardize_facebook_profiles(profiles: List[Dict]) -> List[Dict]:
                 'channel':                  'Outbound',
                 'channel_host_prospected':  'Phyllo',
                 'funnel':                   'Community',
-                'email_validation_status':  profile.get('email_validation_status'),
             }
 
             # Drop None / empty-string / zero values
