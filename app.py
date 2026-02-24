@@ -1150,6 +1150,18 @@ def start_instagram_discovery():
             return jsonify({'error': f'Unknown BDR name(s): {invalid_bdrs}'}), 400
         user_filters['bdr_names'] = bdr_names
 
+        # Validate bio_phrase_advanced
+        VALID_ACTIONS = {'AND', 'OR', 'NOT'}
+        bio_advanced = user_filters.get('bio_phrase_advanced') or []
+        if not isinstance(bio_advanced, list):
+            return jsonify({'error': 'bio_phrase_advanced must be a list'}), 400
+        for clause in bio_advanced:
+            if not isinstance(clause, dict) or not clause.get('bio_phrase') or clause.get('action') not in VALID_ACTIONS:
+                return jsonify({'error': 'Each bio_phrase_advanced entry must have a non-empty bio_phrase and action (AND/OR/NOT)'}), 400
+        if len(bio_advanced) > 14:
+            return jsonify({'error': 'bio_phrase_advanced is capped at 14 clauses (15 total including bio_phrase)'}), 400
+        user_filters['bio_phrase_advanced'] = bio_advanced
+
         # Queue discovery task
         task = discover_instagram_profiles.delay(user_filters=user_filters)
         job_id = str(task.id)
@@ -1212,13 +1224,24 @@ def start_facebook_discovery():
         # Validate member counts (optional)
         min_members = user_filters.get('min_members', 0)
         max_members = user_filters.get('max_members', 0)
-        
+
         if min_members and not isinstance(min_members, int):
             return jsonify({'error': 'min_members must be an integer'}), 400
         if max_members and not isinstance(max_members, int):
             return jsonify({'error': 'max_members must be an integer'}), 400
         if min_members and max_members and min_members >= max_members:
             return jsonify({'error': 'min_members must be less than max_members'}), 400
+
+        # Validate visibility (optional: 'all', 'public', 'private')
+        visibility = user_filters.get('visibility', 'all')
+        if visibility not in ('all', 'public', 'private'):
+            return jsonify({'error': "visibility must be one of: all, public, private"}), 400
+        user_filters['visibility'] = visibility
+
+        # Validate min_posts_per_month (optional)
+        min_posts_per_month = user_filters.get('min_posts_per_month', 0)
+        if min_posts_per_month and not isinstance(min_posts_per_month, int):
+            return jsonify({'error': 'min_posts_per_month must be an integer'}), 400
 
         # Validate BDR names
         bdr_names = user_filters.get('bdr_names', list(BDR_EMAILS.keys()))
@@ -1281,13 +1304,34 @@ def start_patreon_discovery():
         search_keywords = user_filters.get('search_keywords', [])
         if not isinstance(search_keywords, list) or len(search_keywords) == 0:
             return jsonify({'error': 'search_keywords must be a non-empty array'}), 400
-        
+
         # Validate max_results
         max_results = user_filters.get('max_results', 100)
         if not isinstance(max_results, int) or max_results < 1:
             return jsonify({'error': 'max_results must be a positive integer'}), 400
         if max_results > 500:
             return jsonify({'error': 'max_results cannot exceed 500'}), 400
+
+        # Validate location (optional string)
+        location = user_filters.get('location', 'United States')
+        if not isinstance(location, str):
+            return jsonify({'error': 'location must be a string'}), 400
+        user_filters['location'] = location.strip()
+
+        # Validate patron count range (optional)
+        min_patrons = user_filters.get('min_patrons', 0)
+        max_patrons = user_filters.get('max_patrons', 0)
+        if min_patrons and not isinstance(min_patrons, int):
+            return jsonify({'error': 'min_patrons must be an integer'}), 400
+        if max_patrons and not isinstance(max_patrons, int):
+            return jsonify({'error': 'max_patrons must be an integer'}), 400
+        if min_patrons and max_patrons and min_patrons >= max_patrons:
+            return jsonify({'error': 'min_patrons must be less than max_patrons'}), 400
+
+        # Validate min_posts (optional)
+        min_posts = user_filters.get('min_posts', 0)
+        if min_posts and not isinstance(min_posts, int):
+            return jsonify({'error': 'min_posts must be an integer'}), 400
 
         # Validate BDR names
         bdr_names = user_filters.get('bdr_names', list(BDR_EMAILS.keys()))
