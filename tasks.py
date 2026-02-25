@@ -1427,10 +1427,15 @@ def extract_first_names_from_instagram_profile(username: str, full_name: str, bi
             - Fallback: "there"
     """
     def _full_name_fallback() -> str:
-        """Return first token of full_name, or 'there' if unavailable."""
+        """Return first token of full_name, first token of username, or 'there'."""
         if full_name and full_name.strip():
             first = full_name.strip().split(' ')[0]
-            return first if first else "there"
+            if first:
+                return first
+        # Try to derive something human-readable from the username
+        # e.g. "morgandrinkscoffee" → "morgandrinkscoffee" (still better than 'there')
+        if username and username.strip():
+            return username.strip().lstrip('@')
         return "there"
 
     if not client:
@@ -1739,6 +1744,13 @@ def process_creator_profile(self, contact_id: str, profile_url: str, bio: str = 
         
         if should_disqualify:
             print(f"DISQUALIFIED: {frequency_reason}")
+            # Derive best available first name before early exit
+            _early_profile = social_data.get('data', [{}])[0].get('profile', {})
+            _early_full_name = (_early_profile.get('full_name', '')
+                                or _early_profile.get('fullName', '')
+                                or _early_profile.get('name', '')).strip()
+            _early_username = _early_profile.get('platform_username', '') or profile_url.rstrip('/').split('/')[-1]
+            _early_first_name = (_early_full_name.split(' ')[0] if _early_full_name else None) or _early_username or 'there'
             # Send low score to HubSpot with reason
             send_to_hubspot(
                 contact_id,
@@ -1753,7 +1765,7 @@ def process_creator_profile(self, contact_id: str, profile_url: str, bio: str = 
                 score_reasoning=f"Profile disqualified - post frequency check: {frequency_reason}",
                 creator_profile={'content_category': 'Inactive/Low frequency'},
                 content_analyses=[],
-                first_name="there"
+                first_name=_early_first_name
             )
             return {
                 "status": "success",
@@ -1785,6 +1797,12 @@ def process_creator_profile(self, contact_id: str, profile_url: str, bio: str = 
         
         if pre_screen_result.get('decision') == 'reject':
             print(f"PRE-SCREEN REJECTED: {pre_screen_result.get('reasoning')}")
+            # Derive best available first name before early exit
+            _ps_full_name = (profile_info.get('full_name', '')
+                             or profile_info.get('fullName', '')
+                             or profile_info.get('name', '')).strip()
+            _ps_username = profile_data.get('username', '') or profile_url.rstrip('/').split('/')[-1]
+            _ps_first_name = (_ps_full_name.split(' ')[0] if _ps_full_name else None) or _ps_username or 'there'
             # Send low score to HubSpot
             send_to_hubspot(
                 contact_id,
@@ -1799,7 +1817,7 @@ def process_creator_profile(self, contact_id: str, profile_url: str, bio: str = 
                 score_reasoning=f"Pre-screen rejected: {pre_screen_result.get('reasoning')}",
                 creator_profile={'content_category': 'Pre-screened out'},
                 content_analyses=[],
-                first_name="there"
+                first_name=_ps_first_name
             )
             return {
                 "status": "success",
@@ -1972,9 +1990,16 @@ def process_creator_profile(self, contact_id: str, profile_url: str, bio: str = 
         
         # Profile lives at data[0].profile (same structure used by create_profile_snapshot above)
         _profile_info = social_data.get('data', [{}])[0].get('profile', {})
-        ig_username = _profile_info.get('platform_username', '') or profile_url.rstrip('/').split('/')[-1]
-        ig_full_name = _profile_info.get('full_name', '')
-        ig_bio = bio if bio else _profile_info.get('introduction', '')
+        ig_username = (_profile_info.get('platform_username', '')
+                       or _profile_info.get('username', '')
+                       or profile_url.rstrip('/').split('/')[-1])
+        # InsightIQ uses snake_case on some endpoints, camelCase on others
+        ig_full_name = (_profile_info.get('full_name', '')
+                        or _profile_info.get('fullName', '')
+                        or _profile_info.get('name', ''))
+        ig_bio = bio if bio else (_profile_info.get('introduction', '')
+                                  or _profile_info.get('biography', '')
+                                  or _profile_info.get('bio', ''))
         
         # NOW we pass content_analyses to give more context
         first_name = extract_first_names_from_instagram_profile(
@@ -2613,13 +2638,16 @@ def discover_patreon_profiles(user_filters=None, job_id=None):
         }
 
         print("Starting Apify Patreon scraper (may take a few minutes)...")
+        update_job_stage(job_id, 'discovery', 'running')
         run = apify.actor("mJiXU9PT4eLHuY0pi").call(run_input=run_input)
         print(f"Apify run complete: {run['id']}")
 
         all_items = list(apify.dataset(run["defaultDatasetId"]).iterate_items())
         print(f"Apify returned {len(all_items)} total items")
+        update_job_stage(job_id, 'discovery', 'completed', raw_results=len(all_items))
 
         # Filter NSFW
+        update_job_stage(job_id, 'filtering', 'running')
         profiles = []
         nsfw_count = 0
         for item in all_items:
@@ -2631,6 +2659,7 @@ def discover_patreon_profiles(user_filters=None, job_id=None):
         print(f"After NSFW filter: {len(profiles)} profiles (excluded {nsfw_count} NSFW)")
 
         # Apply patron count filter
+        patron_filtered = 0
         if min_patrons > 0 or max_patrons > 0:
             before = len(profiles)
             filtered = []
@@ -2642,18 +2671,27 @@ def discover_patreon_profiles(user_filters=None, job_id=None):
                     continue
                 filtered.append(p)
             profiles = filtered
+            patron_filtered = before - len(profiles)
             print(f"After patron count filter ({min_patrons}-{max_patrons}): {len(profiles)} profiles "
-                  f"(excluded {before - len(profiles)})")
+                  f"(excluded {patron_filtered})")
 
         # Apply minimum posts filter
+        posts_filtered = 0
         if min_posts > 0:
             before = len(profiles)
             profiles = [
                 p for p in profiles
                 if int(p.get('post_count') or p.get('total_posts') or p.get('posts_count') or 0) >= min_posts
             ]
+            posts_filtered = before - len(profiles)
             print(f"After min_posts filter (>={min_posts}): {len(profiles)} profiles "
-                  f"(excluded {before - len(profiles)})")
+                  f"(excluded {posts_filtered})")
+
+        update_job_stage(job_id, 'filtering', 'completed',
+                         profiles_passed=len(profiles),
+                         nsfw_removed=nsfw_count,
+                         patron_filtered=patron_filtered,
+                         posts_filtered=posts_filtered)
 
         if not profiles:
             warning_msg = (
@@ -2687,10 +2725,14 @@ def discover_patreon_profiles(user_filters=None, job_id=None):
 
         # Standardise → BDR round-robin → HubSpot
         update_discovery_job_status(job_id, status='importing')
+        update_job_stage(job_id, 'hubspot_import', 'running')
         standardized = standardize_patreon_profiles(enriched)
         bdr_names = user_filters.get('bdr_names', list(BDR_OWNER_IDS.keys()))
         standardized = assign_bdr_round_robin(standardized, bdr_names)
         import_results = import_profiles_to_hubspot(standardized, job_id)
+        update_job_stage(job_id, 'hubspot_import', 'completed',
+                         created=import_results['created'],
+                         skipped=import_results['skipped'])
 
         update_discovery_job_status(
             job_id, status='completed',
@@ -2784,11 +2826,15 @@ def discover_facebook_groups(user_filters=None, job_id=None):
             'mobileResults':     False,
         }
 
+        update_job_stage(job_id, 'discovery', 'running')
         run = apify.actor("apify~google-search-scraper").call(run_input=run_input)
         items = list(apify.dataset(run["defaultDatasetId"]).iterate_items())
         print(f"Google search complete: {len(items)} result pages")
+        update_job_stage(job_id, 'discovery', 'completed',
+                         queries_run=len(google_queries), result_pages=len(items))
 
-        # Parse results into profile dicts
+        # Parse results + filter into profile dicts
+        update_job_stage(job_id, 'filtering', 'running')
         profiles = []
         seen_urls: set = set()
 
@@ -2853,6 +2899,7 @@ def discover_facebook_groups(user_filters=None, job_id=None):
                 })
 
         print(f"Facebook Groups discovery: {len(profiles)} groups found")
+        update_job_stage(job_id, 'filtering', 'completed', profiles_passed=len(profiles))
         update_discovery_job_status(job_id, status='enriching', profiles_found=len(profiles))
 
         # Full enrichment pipeline
@@ -2860,10 +2907,14 @@ def discover_facebook_groups(user_filters=None, job_id=None):
 
         # Standardise → BDR round-robin → HubSpot
         update_discovery_job_status(job_id, status='importing')
+        update_job_stage(job_id, 'hubspot_import', 'running')
         standardized = standardize_facebook_profiles(enriched)
         bdr_names = user_filters.get('bdr_names', list(BDR_OWNER_IDS.keys()))
         standardized = assign_bdr_round_robin(standardized, bdr_names)
         import_results = import_profiles_to_hubspot(standardized, job_id)
+        update_job_stage(job_id, 'hubspot_import', 'completed',
+                         created=import_results['created'],
+                         skipped=import_results['skipped'])
 
         update_discovery_job_status(
             job_id, status='completed',
@@ -4716,6 +4767,7 @@ def enrich_profiles_full_pipeline(profiles: List[Dict], job_id: str,
     # GROUP 1 (parallel): Google Bridge | RSS | Link Agg Pass 1          #
     # ------------------------------------------------------------------ #
     print("[ENRICH] Group 1 (parallel): Google Bridge | RSS | Link Agg Pass 1")
+    update_job_stage(job_id, 'enriching_core', 'running')
 
     def _g1_google_bridge() -> str:
         if platform in ('facebook_group', 'meetup'):
@@ -4767,10 +4819,13 @@ def enrich_profiles_full_pipeline(profiles: List[Dict], job_id: str,
             except Exception as e:
                 print(f"[ENRICH]   {label} error: {e}")
 
+    update_job_stage(job_id, 'enriching_core', 'completed')
+
     # ------------------------------------------------------------------ #
     # GROUP 2 (parallel): YouTube | Instagram | Twitter bios             #
     # ------------------------------------------------------------------ #
     print("[ENRICH] Group 2 (parallel): YouTube About Pages | Instagram | Twitter bios")
+    update_job_stage(job_id, 'enriching_social', 'running')
 
     def _g2_youtube() -> str:
         sgb.scrape_youtube_about_pages_batch(profiles)
@@ -4798,12 +4853,15 @@ def enrich_profiles_full_pipeline(profiles: List[Dict], job_id: str,
             except Exception as e:
                 print(f"[ENRICH]   {label} error: {e}")
 
+    update_job_stage(job_id, 'enriching_social', 'completed')
+
     # ------------------------------------------------------------------ #
     # Link Aggregators Pass 2                                             #
     # Scrape NEW aggregator URLs surfaced during Group 2.                #
     # Only for profiles that still have no email.                        #
     # ------------------------------------------------------------------ #
     print("[ENRICH] Link Aggregators Pass 2")
+    update_job_stage(job_id, 'link_agg_p2', 'running')
 
     agg_urls_p2: List[str] = []
     agg_url_to_idx_p2: Dict[str, List[int]] = {}
@@ -4829,16 +4887,22 @@ def enrich_profiles_full_pipeline(profiles: List[Dict], job_id: str,
                 if data.get('personal_website') and not p.get('personal_website'):
                     p['personal_website'] = data['personal_website']
 
+    update_job_stage(job_id, 'link_agg_p2', 'completed',
+                     new_urls_scraped=len(set(agg_urls_p2)))
+
     # ------------------------------------------------------------------ #
     # Google Contact Search  (last resort)                               #
     # ------------------------------------------------------------------ #
     print("[ENRICH] Google Contact Search")
+    update_job_stage(job_id, 'contact_search', 'running')
     profiles = sgb.google_contact_search(profiles, job_id)
+    update_job_stage(job_id, 'contact_search', 'completed')
 
     # ------------------------------------------------------------------ #
     # Website Crawl  (26 subpages + glob patterns + email priority)      #
     # ------------------------------------------------------------------ #
     print("[ENRICH] Website Crawl")
+    update_job_stage(job_id, 'website_crawl', 'running')
 
     websites_to_crawl: List[str] = []
     website_to_idx: Dict[str, List[int]] = {}
@@ -4864,10 +4928,14 @@ def enrich_profiles_full_pipeline(profiles: List[Dict], job_id: str,
                             if val and not p.get(key):
                                 p[key] = val
 
+    update_job_stage(job_id, 'website_crawl', 'completed',
+                     sites_crawled=len(set(websites_to_crawl)))
+
     # ------------------------------------------------------------------ #
     # Apollo.io                                                           #
     # ------------------------------------------------------------------ #
     print("[ENRICH] Apollo.io")
+    update_job_stage(job_id, 'apollo', 'running')
 
     if apollo:
         apollo_hits = 0
@@ -4921,19 +4989,24 @@ def enrich_profiles_full_pipeline(profiles: List[Dict], job_id: str,
             time.sleep(0.3)
 
         print(f"[ENRICH]   Apollo found {apollo_hits} emails")
+        update_job_stage(job_id, 'apollo', 'completed', emails_found=apollo_hits)
     else:
         print("[ENRICH]   Apollo skipped (no API key)")
+        update_job_stage(job_id, 'apollo', 'skipped')
 
     # ------------------------------------------------------------------ #
     # Leads Finder                                                        #
     # ------------------------------------------------------------------ #
     print("[ENRICH] Leads Finder")
+    update_job_stage(job_id, 'leads_finder', 'running')
     profiles = enrich_with_leads_finder(profiles, job_id)
+    update_job_stage(job_id, 'leads_finder', 'completed')
 
     # ------------------------------------------------------------------ #
     # MillionVerifier  (validate all discovered emails)                   #
     # ------------------------------------------------------------------ #
     print("[ENRICH] MillionVerifier email validation")
+    update_job_stage(job_id, 'email_validation', 'running')
 
     if mv:
         email_items = [
@@ -4949,10 +5022,14 @@ def enrich_profiles_full_pipeline(profiles: List[Dict], job_id: str,
                 profiles[item['idx']]['email_validation_status'] = status
             valid_count = sum(1 for s in validation_results.values() if s == 'valid')
             print(f"[ENRICH]   {valid_count}/{len(email_items)} emails valid")
+            update_job_stage(job_id, 'email_validation', 'completed',
+                             emails_validated=len(email_items), valid=valid_count)
         else:
             print("[ENRICH]   No emails to validate")
+            update_job_stage(job_id, 'email_validation', 'skipped')
     else:
         print("[ENRICH]   MillionVerifier skipped (no API key)")
+        update_job_stage(job_id, 'email_validation', 'skipped')
 
     print(f"[ENRICH] Pipeline complete for {len(profiles)} profiles")
     return profiles
@@ -5085,6 +5162,58 @@ def update_discovery_job_status(job_id, status, **kwargs):
         print(f"Job {job_id} → {status}")
     except Exception as e:
         print(f"Failed to update job status: {e}")
+
+
+def update_job_stage(job_id: str, stage: str, status: str, **metrics):
+    """
+    Update a specific pipeline stage within a discovery job's Redis record.
+
+    Stages: discovery | filtering | enriching_core | enriching_social |
+            link_agg_p2 | contact_search | website_crawl | apollo |
+            leads_finder | email_validation | hubspot_import
+
+    status: 'running' | 'completed' | 'failed' | 'skipped'
+    metrics: arbitrary key/value data recorded on the stage (e.g. profiles_found=47)
+    """
+    try:
+        import redis as redis_lib
+        redis_url = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
+        r = redis_lib.from_url(redis_url, decode_responses=True)
+
+        job_key  = f'discovery_job:{job_id}'
+        job_data = r.get(job_key)
+        if not job_data:
+            return
+        job = json.loads(job_data)
+
+        if 'stages' not in job:
+            job['stages'] = {}
+
+        now = datetime.now().isoformat()
+        stage_rec = job['stages'].get(stage, {})
+        stage_rec['status'] = status
+
+        if status == 'running':
+            stage_rec['started_at'] = now
+            job['current_stage'] = stage
+        elif status in ('completed', 'failed', 'skipped'):
+            stage_rec['completed_at'] = now
+            started = stage_rec.get('started_at')
+            if started:
+                try:
+                    from datetime import datetime as _dt
+                    delta = _dt.fromisoformat(now) - _dt.fromisoformat(started)
+                    stage_rec['duration_s'] = round(delta.total_seconds(), 1)
+                except Exception:
+                    pass
+
+        stage_rec.update(metrics)
+        job['stages'][stage] = stage_rec
+        job['updated_at'] = now
+
+        r.setex(job_key, 86400, json.dumps(job))
+    except Exception as e:
+        print(f"[STAGE_UPDATE] Failed to update stage '{stage}': {e}")
 
 
 # ============================================================================
