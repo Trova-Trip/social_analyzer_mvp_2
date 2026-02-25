@@ -1,974 +1,805 @@
 {% extends 'base.html' %}
 {% set active_page = 'discovery' %}
-{% block title %}Discovery{% endblock %}
+{% block title %}New Discovery{% endblock %}
+{% block page_title %}New Discovery{% endblock %}
 
 {% block content %}
     <div class="max-w-3xl mx-auto">
-        <div class="mb-6">
-            <h1 class="text-3xl font-bold" style="color:#005c69;">🔍 Creator Discovery</h1>
-            <p class="mt-2" style="color:#3c4858;">Discover and import high-quality creators across Instagram, Patreon, and Facebook</p>
+        <div class="mb-6 animate-in">
+            <h1 class="text-xl font-bold" style="color:#005c69;">New Discovery Run</h1>
+            <p class="mt-1 text-sm" style="color:#3c4858;opacity:0.6;">Configure filters, launch a run, and track it through the 6-stage pipeline</p>
         </div>
-        
-        <!-- Fixed Parameters Banner -->
-        <div class="bg-blue-50 border-l-4 border-blue-500 p-4 mb-6">
-            <div class="flex">
-                <div class="flex-shrink-0">
-                    <svg class="h-5 w-5 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
-                        <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/>
-                    </svg>
-                </div>
-                <div class="ml-3">
-                    <p class="text-sm text-blue-800">
-                        <strong>Auto-filters applied:</strong> English creators in USA with 30%+ USA audience, 
-                        email required, sorted by follower count descending
-                    </p>
-                </div>
+
+        <!-- Auto-filters Banner -->
+        <div class="card p-4 mb-5 animate-in" style="animation-delay:0.04s;border-left:3px solid #00b2c9;">
+            <div class="flex items-start gap-3">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" class="flex-shrink-0 mt-0.5" style="color:#00b2c9;">
+                    <circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.5"/>
+                    <path d="M8 5V8.5M8 11H8.01" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+                <p class="text-xs" style="color:#3c4858;">
+                    <strong style="color:#005c69;">Auto-filters applied:</strong> English creators in USA with 30%+ USA audience,
+                    email required, sorted by follower count descending
+                </p>
             </div>
         </div>
-        
-<!-- Add Facebook Groups to platform selector (replace existing platform selector section) -->
 
         <!-- Platform Selector -->
-        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
-            <h2 class="text-xl font-bold mb-4">Select Platform</h2>
-            
-            <div class="grid grid-cols-3 gap-4">
-                <button type="button" id="platform-instagram" 
-                        class="platform-btn platform-active flex items-center justify-center p-4 border-2 border-blue-500 bg-blue-50 rounded-lg cursor-pointer transition-all hover:bg-blue-100">
-                    <div class="text-center">
-                        <div class="text-3xl mb-2">📸</div>
-                        <div class="font-bold text-gray-900">Instagram</div>
-                        <div class="text-xs text-gray-600 mt-1">via InsightIQ</div>
+        <div class="card p-5 mb-4 animate-in" style="animation-delay:0.08s;">
+            <h2 class="section-label mb-4">Platform</h2>
+            <div class="platform-grid" id="platform-selector">
+                <button type="button" data-platform="instagram" class="platform-card active">
+                    <div class="platform-card-icon">
+                        <svg width="18" height="18" viewBox="0 0 16 16" fill="none"><rect x="1.5" y="1.5" width="13" height="13" rx="4" stroke="currentColor" stroke-width="1.3"/><circle cx="8" cy="8" r="3" stroke="currentColor" stroke-width="1.3"/><circle cx="11.8" cy="4.2" r="0.8" fill="currentColor"/></svg>
+                    </div>
+                    <div>
+                        <div class="platform-card-name">Instagram</div>
+                        <div class="platform-card-source">InsightIQ</div>
                     </div>
                 </button>
-                
-                <button type="button" id="platform-patreon" 
-                        class="platform-btn flex items-center justify-center p-4 border-2 border-gray-300 bg-white rounded-lg cursor-pointer transition-all hover:bg-gray-50">
-                    <div class="text-center">
-                        <div class="text-3xl mb-2">🎨</div>
-                        <div class="font-bold text-gray-900">Patreon</div>
-                        <div class="text-xs text-gray-600 mt-1">via Apify Scraper</div>
+
+                <button type="button" data-platform="patreon" class="platform-card">
+                    <div class="platform-card-icon">
+                        <svg width="18" height="18" viewBox="0 0 16 16" fill="none"><circle cx="10" cy="5.5" r="3.5" stroke="currentColor" stroke-width="1.3"/><rect x="2" y="2" width="2" height="12" rx="1" fill="currentColor" opacity="0.6"/></svg>
+                    </div>
+                    <div>
+                        <div class="platform-card-name">Patreon</div>
+                        <div class="platform-card-source">Apify Scraper</div>
                     </div>
                 </button>
-                
-                <button type="button" id="platform-facebook" 
-                        class="platform-btn flex items-center justify-center p-4 border-2 border-gray-300 bg-white rounded-lg cursor-pointer transition-all hover:bg-gray-50">
-                    <div class="text-center">
-                        <div class="text-3xl mb-2">👥</div>
-                        <div class="font-bold text-gray-900">Facebook Groups</div>
-                        <div class="text-xs text-gray-600 mt-1">via Google Search</div>
+
+                <button type="button" data-platform="facebook" class="platform-card">
+                    <div class="platform-card-icon">
+                        <svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M13 2H3V10C3 10.55 3.45 11 4 11H9L13 14V2Z" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    </div>
+                    <div>
+                        <div class="platform-card-name">Facebook Groups</div>
+                        <div class="platform-card-source">Google Search</div>
+                    </div>
+                </button>
+
+                <!-- Future platforms (demo — remove these when real adapters exist) -->
+                <button type="button" class="platform-card" disabled style="opacity:0.45;cursor:default;">
+                    <div class="platform-card-icon">
+                        <svg width="18" height="18" viewBox="0 0 16 16" fill="none"><circle cx="5" cy="6" r="2" stroke="currentColor" stroke-width="1.3"/><circle cx="11" cy="6" r="2" stroke="currentColor" stroke-width="1.3"/><path d="M1 14C1 11.5 3 10 5 10C6.2 10 7 10.4 8 11C9 10.4 9.8 10 11 10C13 10 15 11.5 15 14" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+                    </div>
+                    <div>
+                        <div class="platform-card-name">Meetup</div>
+                        <div class="platform-card-source">Coming soon</div>
+                    </div>
+                </button>
+
+                <button type="button" class="platform-card" disabled style="opacity:0.45;cursor:default;">
+                    <div class="platform-card-icon">
+                        <svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M8 1C5.8 1 4 2.8 4 5V8C4 10.2 5.8 12 8 12C10.2 12 12 10.2 12 8V5C12 2.8 10.2 1 8 1Z" stroke="currentColor" stroke-width="1.3"/><path d="M8 12V15M5 15H11" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+                    </div>
+                    <div>
+                        <div class="platform-card-name">Podcasts</div>
+                        <div class="platform-card-source">Coming soon</div>
+                    </div>
+                </button>
+
+                <button type="button" class="platform-card" disabled style="opacity:0.45;cursor:default;">
+                    <div class="platform-card-icon">
+                        <svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M3 3H13M3 6.5H13M3 10L8 13L13 10" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    </div>
+                    <div>
+                        <div class="platform-card-name">Substack</div>
+                        <div class="platform-card-source">Coming soon</div>
+                    </div>
+                </button>
+
+                <button type="button" class="platform-card" disabled style="opacity:0.45;cursor:default;">
+                    <div class="platform-card-icon">
+                        <svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M2 8C2 4.7 4.7 2 8 2C11.3 2 14 4.7 14 8L14 14H8C4.7 14 2 11.3 2 8Z" stroke="currentColor" stroke-width="1.3"/><circle cx="6" cy="8" r="1" fill="currentColor"/><circle cx="10" cy="8" r="1" fill="currentColor"/></svg>
+                    </div>
+                    <div>
+                        <div class="platform-card-name">Reddit</div>
+                        <div class="platform-card-source">Coming soon</div>
+                    </div>
+                </button>
+
+                <button type="button" class="platform-card" disabled style="opacity:0.45;cursor:default;">
+                    <div class="platform-card-icon">
+                        <svg width="18" height="18" viewBox="0 0 16 16" fill="none"><polygon points="6.5,2 6.5,14 13,8" stroke="currentColor" stroke-width="1.3" fill="none" stroke-linejoin="round"/><line x1="3" y1="2" x2="3" y2="14" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+                    </div>
+                    <div>
+                        <div class="platform-card-name">YouTube</div>
+                        <div class="platform-card-source">Coming soon</div>
+                    </div>
+                </button>
+
+                <button type="button" class="platform-card" disabled style="opacity:0.45;cursor:default;">
+                    <div class="platform-card-icon">
+                        <svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M2 4L8 8L14 4M2 4V12H14V4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    </div>
+                    <div>
+                        <div class="platform-card-name">Newsletters</div>
+                        <div class="platform-card-source">Coming soon</div>
+                    </div>
+                </button>
+
+                <button type="button" class="platform-card" disabled style="opacity:0.45;cursor:default;">
+                    <div class="platform-card-icon">
+                        <svg width="18" height="18" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.3"/><path d="M8 2C6 5 6 11 8 14M8 2C10 5 10 11 8 14M2.5 6H13.5M2.5 10H13.5" stroke="currentColor" stroke-width="1.3"/></svg>
+                    </div>
+                    <div>
+                        <div class="platform-card-name">Blogs/SEO</div>
+                        <div class="platform-card-source">Coming soon</div>
                     </div>
                 </button>
             </div>
         </div>
 
-<!-- Add Facebook filters section (add after Patreon filters) -->
+        <!-- Pipeline Diagram (HTMX) -->
+        <div class="card p-5 mb-4 animate-in" style="animation-delay:0.1s;">
+            <h2 class="section-label mb-4">Pipeline Preview</h2>
+            <div id="pipeline-stages-list"
+                 hx-get="/partials/pipeline-preview?platform=instagram"
+                 hx-trigger="load"
+                 hx-swap="innerHTML">
+            </div>
+        </div>
 
-                <!-- Facebook Groups Filters (hidden by default) -->
-                <div id="facebook-filters" class="hidden">
-                    <!-- Keywords (tag-style) -->
-                    <div>
-                        <label class="block text-sm font-bold text-gray-700 mb-2">
-                            Search Keywords
-                        </label>
-                        <div id="facebook-keyword-wrapper"
-                             class="tag-input-wrapper border border-gray-300 rounded-lg p-2 focus-within:ring-2 focus-within:ring-blue-500 min-h-[42px] flex flex-wrap gap-1 items-start cursor-text"
-                             onclick="document.getElementById('facebook-keyword-input').focus()">
-                            <input type="text" id="facebook-keyword-input"
-                                   placeholder="Type keyword and press Enter…"
-                                   class="flex-1 min-w-[180px] outline-none text-sm py-1 bg-transparent">
-                        </div>
-                        <p class="text-xs text-gray-500 mt-1">
-                            Type a keyword or phrase and press <kbd class="px-1 py-0.5 bg-gray-100 border border-gray-300 rounded text-xs">Enter</kbd> to add it. Click <strong>×</strong> to remove.
-                        </p>
-                    </div>
+        <!-- Staleness Warning (hidden by default) -->
+        <div id="staleness-warning" class="card p-4 mb-4 animate-in hidden" style="border-left:3px solid #f59e0b;">
+            <div class="flex items-start gap-3">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" class="flex-shrink-0 mt-0.5" style="color:#f59e0b;">
+                    <path d="M8 1L15 14H1L8 1Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+                    <path d="M8 6V9M8 11.5H8.01" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+                <p class="text-xs" style="color:#3c4858;">
+                    <strong style="color:#92400e;">Low novelty:</strong>
+                    <span id="staleness-text"></span>
+                </p>
+            </div>
+        </div>
 
-                    <!-- Max Results -->
-                    <div>
-                        <label class="block text-sm font-bold text-gray-700 mb-2">Max Results</label>
-                        <input type="number" id="facebook-max-results" value="100" min="1" max="500" step="1"
-                               class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                        <p class="text-xs text-gray-500 mt-1">Maximum: 500 groups (typical: 50-100)</p>
-                    </div>
+        <!-- Presets -->
+        <div class="card p-5 mb-4 animate-in" style="animation-delay:0.11s;">
+            <div class="flex items-center justify-between mb-3">
+                <h2 class="section-label">Presets</h2>
+                <button type="button" id="save-preset-btn" onclick="savePreset()"
+                        class="text-xs font-medium" style="color:#00b2c9;cursor:pointer;background:none;border:none;">
+                    Save as preset
+                </button>
+            </div>
+            <select id="preset-select" class="input-field" style="background:white;" onchange="loadPreset(this.value)">
+                <option value="">Select a preset...</option>
+            </select>
+        </div>
 
-                    <!-- Member Count Range -->
-                    <div>
-                        <label class="block text-sm font-bold text-gray-700 mb-2">Member Count <span class="text-gray-500 font-normal">(Optional)</span></label>
-                        <div class="grid grid-cols-2 gap-4">
-                            <div>
-                                <label class="block text-xs text-gray-600 mb-1">Minimum</label>
-                                <input type="number" id="facebook-min-members" value="500" step="100"
-                                       class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                            </div>
-                            <div>
-                                <label class="block text-xs text-gray-600 mb-1">Maximum</label>
-                                <input type="number" id="facebook-max-members" value="50000" step="1000"
-                                       class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                            </div>
-                        </div>
-                        <p class="text-xs text-gray-500 mt-1">Leave at 0 to skip filtering by member count</p>
-                    </div>
-
-                    <!-- Group Visibility -->
-                    <div>
-                        <label class="block text-sm font-bold text-gray-700 mb-2">Group Visibility <span class="text-gray-500 font-normal">(Optional)</span></label>
-                        <select id="facebook-visibility"
-                                class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white">
-                            <option value="all">All groups</option>
-                            <option value="public">Public groups only</option>
-                            <option value="private">Private groups only</option>
-                        </select>
-                        <p class="text-xs text-gray-500 mt-1">Filter based on group type reported in Google search snippets</p>
-                    </div>
-
-                    <!-- Min Posts Per Month -->
-                    <div>
-                        <label class="block text-sm font-bold text-gray-700 mb-2">Minimum Posts / Month <span class="text-gray-500 font-normal">(Optional)</span></label>
-                        <input type="number" id="facebook-min-posts-month" value="" min="0" step="1" placeholder="e.g. 10"
-                               class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                        <p class="text-xs text-gray-500 mt-1">Best-effort — parsed from Google snippet when available. Leave blank to skip.</p>
-                    </div>
-
-                    <!-- Enrichment Notice -->
-                    <div class="bg-blue-50 border-l-4 border-blue-500 p-4">
-                        <div class="flex">
-                            <div class="flex-shrink-0">
-                                <svg class="h-5 w-5 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/>
-                                </svg>
-                            </div>
-                            <div class="ml-3">
-                                <p class="text-sm text-blue-800">
-                                    <strong>Social Graph Enrichment:</strong> We'll automatically crawl group websites
-                                    for emails, social profiles (Instagram, YouTube, Twitter), and use Apollo.io
-                                    to find leader contact information.
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-    
         <!-- Discovery Form -->
-        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
-            <h2 class="text-xl font-bold mb-4">Start New Discovery</h2>
-            
+        <div class="card p-5 mb-4 animate-in" style="animation-delay:0.12s;">
+            <h2 class="section-label mb-4">Filters</h2>
+
             <form id="discovery-form" class="space-y-5">
                 <!-- Instagram Filters (shown by default) -->
-                <div id="instagram-filters">
-                    <!-- Follower Count -->
+                <div data-filters="instagram">
                     <div>
-                        <label class="block text-sm font-bold text-gray-700 mb-2">Follower Range</label>
-                        <div class="grid grid-cols-2 gap-4">
+                        <label class="block text-xs font-semibold mb-1.5" style="color:#005c69;">Follower Range</label>
+                        <div class="grid grid-cols-2 gap-3">
                             <div>
-                                <label class="block text-xs text-gray-600 mb-1">Minimum</label>
-                                <input type="number" id="min-followers" value="20000" step="1000"
-                                       class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                <label class="block text-xs mb-1" style="color:#3c4858;opacity:0.5;">Minimum</label>
+                                <input type="number" id="min-followers" value="20000" step="1000" class="input-field">
                             </div>
                             <div>
-                                <label class="block text-xs text-gray-600 mb-1">Maximum</label>
-                                <input type="number" id="max-followers" value="900000" step="1000"
-                                       class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                <label class="block text-xs mb-1" style="color:#3c4858;opacity:0.5;">Maximum</label>
+                                <input type="number" id="max-followers" value="900000" step="1000" class="input-field">
                             </div>
                         </div>
                     </div>
-                    
-                    <!-- Max Results -->
-                    <div>
-                        <label class="block text-sm font-bold text-gray-700 mb-2">Max Results</label>
-                        <input type="number" id="instagram-max-results" value="500" min="1" max="4000" step="1"
-                               class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                        <p class="text-xs text-gray-500 mt-1">Maximum: 4000 profiles (typical: 100-500)</p>
+
+                    <div class="mt-4">
+                        <label class="block text-xs font-semibold mb-1.5" style="color:#005c69;">Max Results</label>
+                        <input type="number" id="instagram-max-results" value="500" min="1" max="4000" step="1" class="input-field">
+                        <p class="text-xs mt-1" style="color:#3c4858;opacity:0.35;">Maximum: 4000 profiles (typical: 100-500)</p>
                     </div>
-                    
-                    <!-- Lookalike (Mutually Exclusive) -->
-                    <div class="border border-gray-200 rounded-lg p-4 bg-gray-50">
-                        <label class="block text-sm font-bold text-gray-700 mb-3">
-                            Lookalike Search <span class="text-gray-500 font-normal">(Optional)</span>
+
+                    <!-- Lookalike -->
+                    <div class="rounded-lg p-4 mt-4" style="border:1px solid rgba(60,72,88,0.08);background:#fafaf8;">
+                        <label class="block text-xs font-semibold mb-3" style="color:#005c69;">
+                            Lookalike Search <span style="color:#3c4858;opacity:0.35;font-weight:400;">(Optional)</span>
                         </label>
-                        
-                        <div class="space-y-3">
-                            <label class="flex items-start">
-                                <input type="radio" name="lookalike-type" value="none" checked
-                                       class="mt-1 mr-3 text-blue-600">
+                        <div class="space-y-2">
+                            <label class="flex items-start gap-2 cursor-pointer">
+                                <input type="radio" name="lookalike-type" value="none" checked class="mt-1">
                                 <div>
-                                    <span class="text-sm font-medium">No lookalike</span>
-                                    <p class="text-xs text-gray-600">Search without targeting similar accounts</p>
+                                    <span class="text-xs font-medium" style="color:#005c69;">No lookalike</span>
+                                    <p class="text-xs" style="color:#3c4858;opacity:0.45;">Standard search</p>
                                 </div>
                             </label>
-                            
-                            <label class="flex items-start">
-                                <input type="radio" name="lookalike-type" value="creator"
-                                       class="mt-1 mr-3 text-blue-600">
+                            <label class="flex items-start gap-2 cursor-pointer">
+                                <input type="radio" name="lookalike-type" value="creator" class="mt-1">
                                 <div>
-                                    <span class="text-sm font-medium">Creator Lookalike</span>
-                                    <p class="text-xs text-gray-600">Find creators with similar content/style</p>
+                                    <span class="text-xs font-medium" style="color:#005c69;">Creator Lookalike</span>
+                                    <p class="text-xs" style="color:#3c4858;opacity:0.45;">Similar content/style</p>
                                 </div>
                             </label>
-                            
-                            <label class="flex items-start">
-                                <input type="radio" name="lookalike-type" value="audience"
-                                       class="mt-1 mr-3 text-blue-600">
+                            <label class="flex items-start gap-2 cursor-pointer">
+                                <input type="radio" name="lookalike-type" value="audience" class="mt-1">
                                 <div>
-                                    <span class="text-sm font-medium">Audience Lookalike</span>
-                                    <p class="text-xs text-gray-600">Find creators whose audience matches</p>
+                                    <span class="text-xs font-medium" style="color:#005c69;">Audience Lookalike</span>
+                                    <p class="text-xs" style="color:#3c4858;opacity:0.45;">Matching audience</p>
                                 </div>
                             </label>
-                            
-                            <input type="text" id="lookalike-username" 
+                            <input type="text" id="lookalike-username"
                                    placeholder="@username (required if lookalike selected)"
-                                   class="w-full border border-gray-300 rounded-lg px-3 py-2 mt-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                   disabled>
+                                   class="input-field mt-1" disabled>
                         </div>
                     </div>
-                    
-                    <!-- Instagram Advanced Filters -->
-                    <details class="border border-gray-200 rounded-lg p-4">
-                        <summary class="font-bold cursor-pointer text-sm text-gray-700 hover:text-gray-900">
+
+                    <!-- Advanced Filters -->
+                    <details class="rounded-lg p-4 mt-4" style="border:1px solid rgba(60,72,88,0.08);">
+                        <summary class="text-xs font-semibold cursor-pointer" style="color:#005c69;">
                             Advanced Filters (Optional)
                         </summary>
-                        
                         <div class="mt-4 space-y-4">
                             <div>
-                                <label class="block text-sm font-bold text-gray-700 mb-2">Creator Interests</label>
-                                <select id="creator-interests" multiple 
-                                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent h-32">
-                                <option value="Television & Film">Television & Film</option>
-                                <option value="Music">Music</option>
-                                <option value="Shopping & Retail">Shopping & Retail</option>
-                                <option value="Coffee, Tea & Beverages">Coffee, Tea & Beverages</option>
-                                <option value="Camera & Photography">Camera & Photography</option>
-                                <option value="Clothes, Shoes, Handbags & Accessories">Clothes, Shoes, Handbags & Accessories</option>
-                                <option value="Beer, Wine & Spirits">Beer, Wine & Spirits</option>
-                                <option value="Sports">Sports</option>
-                                <option value="Electronics & Computers">Electronics & Computers</option>
-                                <option value="Gaming">Gaming</option>
-                                <option value="Activewear">Activewear</option>
-                                <option value="Art & Design">Art & Design</option>
-                                <option value="Travel, Tourism & Aviation">Travel, Tourism & Aviation</option>
-                                <option value="Business & Careers">Business & Careers</option>
-                                <option value="Beauty & Cosmetics">Beauty & Cosmetics</option>
-                                <option value="Healthcare & Medicine">Healthcare & Medicine</option>
-                                <option value="Jewellery & Watches">Jewellery & Watches</option>
-                                <option value="Restaurants, Food & Grocery">Restaurants, Food & Grocery</option>
-                                <option value="Toys, Children & Baby">Toys, Children & Baby</option>
-                                <option value="Fitness & Yoga">Fitness & Yoga</option>
-                                <option value="Wedding">Wedding</option>
-                                <option value="Tobacco & Smoking">Tobacco & Smoking</option>
-                                <option value="Pets">Pets</option>
-                                <option value="Healthy Lifestyle">Healthy Lifestyle</option>
-                                <option value="Luxury Goods">Luxury Goods</option>
-                                <option value="Home Decor, Furniture & Garden">Home Decor, Furniture & Garden</option>
-                                <option value="Friends, Family & Relationships">Friends, Family & Relationships</option>
-                                <option value="Cars & Motorbikes">Cars & Motorbikes</option>
+                                <label class="block text-xs font-semibold mb-1.5" style="color:#005c69;">Creator Interests</label>
+                                <select id="creator-interests" multiple class="input-field" style="height:112px;font-size:12px;">
+                                    <option value="Television & Film">Television & Film</option>
+                                    <option value="Music">Music</option>
+                                    <option value="Shopping & Retail">Shopping & Retail</option>
+                                    <option value="Coffee, Tea & Beverages">Coffee, Tea & Beverages</option>
+                                    <option value="Camera & Photography">Camera & Photography</option>
+                                    <option value="Clothes, Shoes, Handbags & Accessories">Clothes, Shoes, Handbags & Accessories</option>
+                                    <option value="Beer, Wine & Spirits">Beer, Wine & Spirits</option>
+                                    <option value="Sports">Sports</option>
+                                    <option value="Electronics & Computers">Electronics & Computers</option>
+                                    <option value="Gaming">Gaming</option>
+                                    <option value="Activewear">Activewear</option>
+                                    <option value="Art & Design">Art & Design</option>
+                                    <option value="Travel, Tourism & Aviation">Travel, Tourism & Aviation</option>
+                                    <option value="Business & Careers">Business & Careers</option>
+                                    <option value="Beauty & Cosmetics">Beauty & Cosmetics</option>
+                                    <option value="Healthcare & Medicine">Healthcare & Medicine</option>
+                                    <option value="Jewellery & Watches">Jewellery & Watches</option>
+                                    <option value="Restaurants, Food & Grocery">Restaurants, Food & Grocery</option>
+                                    <option value="Toys, Children & Baby">Toys, Children & Baby</option>
+                                    <option value="Fitness & Yoga">Fitness & Yoga</option>
+                                    <option value="Wedding">Wedding</option>
+                                    <option value="Tobacco & Smoking">Tobacco & Smoking</option>
+                                    <option value="Pets">Pets</option>
+                                    <option value="Healthy Lifestyle">Healthy Lifestyle</option>
+                                    <option value="Luxury Goods">Luxury Goods</option>
+                                    <option value="Home Decor, Furniture & Garden">Home Decor, Furniture & Garden</option>
+                                    <option value="Friends, Family & Relationships">Friends, Family & Relationships</option>
+                                    <option value="Cars & Motorbikes">Cars & Motorbikes</option>
                                 </select>
-                                <p class="text-xs text-gray-500 mt-1">Hold Ctrl/Cmd to select multiple</p>
+                                <p class="text-xs mt-1" style="color:#3c4858;opacity:0.35;">Hold Ctrl/Cmd to select multiple</p>
                             </div>
-                            
                             <div>
-                                <label class="block text-sm font-bold text-gray-700 mb-2">Audience Interests</label>
-                                <select id="audience-interests" multiple 
-                                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent h-32">
-                                <option value="Television & Film">Television & Film</option>
-                                <option value="Music">Music</option>
-                                <option value="Shopping & Retail">Shopping & Retail</option>
-                                <option value="Coffee, Tea & Beverages">Coffee, Tea & Beverages</option>
-                                <option value="Camera & Photography">Camera & Photography</option>
-                                <option value="Clothes, Shoes, Handbags & Accessories">Clothes, Shoes, Handbags & Accessories</option>
-                                <option value="Beer, Wine & Spirits">Beer, Wine & Spirits</option>
-                                <option value="Sports">Sports</option>
-                                <option value="Electronics & Computers">Electronics & Computers</option>
-                                <option value="Gaming">Gaming</option>
-                                <option value="Activewear">Activewear</option>
-                                <option value="Art & Design">Art & Design</option>
-                                <option value="Travel, Tourism & Aviation">Travel, Tourism & Aviation</option>
-                                <option value="Business & Careers">Business & Careers</option>
-                                <option value="Beauty & Cosmetics">Beauty & Cosmetics</option>
-                                <option value="Healthcare & Medicine">Healthcare & Medicine</option>
-                                <option value="Jewellery & Watches">Jewellery & Watches</option>
-                                <option value="Restaurants, Food & Grocery">Restaurants, Food & Grocery</option>
-                                <option value="Toys, Children & Baby">Toys, Children & Baby</option>
-                                <option value="Fitness & Yoga">Fitness & Yoga</option>
-                                <option value="Wedding">Wedding</option>
-                                <option value="Tobacco & Smoking">Tobacco & Smoking</option>
-                                <option value="Pets">Pets</option>
-                                <option value="Healthy Lifestyle">Healthy Lifestyle</option>
-                                <option value="Luxury Goods">Luxury Goods</option>
-                                <option value="Home Decor, Furniture & Garden">Home Decor, Furniture & Garden</option>
-                                <option value="Friends, Family & Relationships">Friends, Family & Relationships</option>
-                                <option value="Cars & Motorbikes">Cars & Motorbikes</option>
+                                <label class="block text-xs font-semibold mb-1.5" style="color:#005c69;">Audience Interests</label>
+                                <select id="audience-interests" multiple class="input-field" style="height:112px;font-size:12px;">
+                                    <option value="Television & Film">Television & Film</option>
+                                    <option value="Music">Music</option>
+                                    <option value="Shopping & Retail">Shopping & Retail</option>
+                                    <option value="Coffee, Tea & Beverages">Coffee, Tea & Beverages</option>
+                                    <option value="Camera & Photography">Camera & Photography</option>
+                                    <option value="Clothes, Shoes, Handbags & Accessories">Clothes, Shoes, Handbags & Accessories</option>
+                                    <option value="Beer, Wine & Spirits">Beer, Wine & Spirits</option>
+                                    <option value="Sports">Sports</option>
+                                    <option value="Electronics & Computers">Electronics & Computers</option>
+                                    <option value="Gaming">Gaming</option>
+                                    <option value="Activewear">Activewear</option>
+                                    <option value="Art & Design">Art & Design</option>
+                                    <option value="Travel, Tourism & Aviation">Travel, Tourism & Aviation</option>
+                                    <option value="Business & Careers">Business & Careers</option>
+                                    <option value="Beauty & Cosmetics">Beauty & Cosmetics</option>
+                                    <option value="Healthcare & Medicine">Healthcare & Medicine</option>
+                                    <option value="Jewellery & Watches">Jewellery & Watches</option>
+                                    <option value="Restaurants, Food & Grocery">Restaurants, Food & Grocery</option>
+                                    <option value="Toys, Children & Baby">Toys, Children & Baby</option>
+                                    <option value="Fitness & Yoga">Fitness & Yoga</option>
+                                    <option value="Wedding">Wedding</option>
+                                    <option value="Tobacco & Smoking">Tobacco & Smoking</option>
+                                    <option value="Pets">Pets</option>
+                                    <option value="Healthy Lifestyle">Healthy Lifestyle</option>
+                                    <option value="Luxury Goods">Luxury Goods</option>
+                                    <option value="Home Decor, Furniture & Garden">Home Decor, Furniture & Garden</option>
+                                    <option value="Friends, Family & Relationships">Friends, Family & Relationships</option>
+                                    <option value="Cars & Motorbikes">Cars & Motorbikes</option>
                                 </select>
-                                <p class="text-xs text-gray-500 mt-1">Hold Ctrl/Cmd to select multiple</p>
+                                <p class="text-xs mt-1" style="color:#3c4858;opacity:0.35;">Hold Ctrl/Cmd to select multiple</p>
                             </div>
-                            
                             <div>
-                                <label class="block text-sm font-bold text-gray-700 mb-2">Hashtags</label>
-                                <input type="text" id="hashtags"
-                                       placeholder="e.g., travel, wanderlust (comma-separated)"
-                                       class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                <label class="block text-xs font-semibold mb-1.5" style="color:#005c69;">Hashtags</label>
+                                <input type="text" id="hashtags" placeholder="e.g., travel, wanderlust (comma-separated)" class="input-field">
                             </div>
-
-                            <!-- Bio Phrase Advanced -->
                             <div>
-                                <label class="block text-sm font-bold text-gray-700 mb-1">Bio Phrase Filter</label>
-                                <p class="text-xs text-gray-500 mb-2">Filter by words or phrases in the creator's bio. Chain up to 15 phrases using AND / OR / NOT.</p>
-
+                                <label class="block text-xs font-semibold mb-1" style="color:#005c69;">Bio Phrase Filter</label>
+                                <p class="text-xs mb-2" style="color:#3c4858;opacity:0.35;">Chain up to 15 phrases using AND / OR / NOT.</p>
                                 <div id="bio-phrase-rows" class="space-y-2">
-                                    <!-- Row 0: base bio_phrase (always visible) -->
                                     <div class="flex items-center gap-2" id="bio-row-0">
-                                        <input type="text" id="bio-phrase-0"
-                                               placeholder="e.g., travel guide"
-                                               class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                        <input type="text" id="bio-phrase-0" placeholder="e.g., travel guide" class="input-field">
                                     </div>
-
-                                    <!-- Action + phrase rows are injected by JS below -->
                                 </div>
-
-                                <!-- "Add clause" button — hidden once cap is hit -->
-                                <button type="button" id="bio-add-btn"
-                                        onclick="bioAddClause()"
-                                        class="mt-2 text-xs text-blue-600 hover:text-blue-800 font-medium hidden">
+                                <button type="button" id="bio-add-btn" onclick="bioAddClause()"
+                                        class="mt-2 text-xs font-medium hidden" style="color:#00b2c9;">
                                     + Add AND / OR / NOT clause
                                 </button>
                             </div>
                         </div>
                     </details>
                 </div>
-                
+
                 <!-- Patreon Filters (hidden by default) -->
-                <div id="patreon-filters" class="hidden">
-                    <!-- Keywords (tag-style) -->
+                <div data-filters="patreon" class="hidden space-y-4">
                     <div>
-                        <label class="block text-sm font-bold text-gray-700 mb-2">
-                            Search Keywords
-                        </label>
+                        <label class="block text-xs font-semibold mb-1.5" style="color:#005c69;">Search Keywords</label>
                         <div id="patreon-keyword-wrapper"
-                             class="tag-input-wrapper border border-gray-300 rounded-lg p-2 focus-within:ring-2 focus-within:ring-blue-500 min-h-[42px] flex flex-wrap gap-1 items-start cursor-text"
+                             class="rounded-lg p-2 min-h-[42px] flex flex-wrap gap-1 items-start cursor-text"
+                             style="border:1px solid rgba(60,72,88,0.13);background:white;"
                              onclick="document.getElementById('patreon-keyword-input').focus()">
-                            <input type="text" id="patreon-keyword-input"
-                                   placeholder="Type keyword and press Enter…"
+                            <input type="text" id="patreon-keyword-input" placeholder="Type keyword and press Enter..."
                                    class="flex-1 min-w-[180px] outline-none text-sm py-1 bg-transparent">
                         </div>
-                        <p class="text-xs text-gray-500 mt-1">
-                            Type a keyword or phrase and press <kbd class="px-1 py-0.5 bg-gray-100 border border-gray-300 rounded text-xs">Enter</kbd> to add it. Click <strong>×</strong> to remove.
-                        </p>
+                        <p class="text-xs mt-1" style="color:#3c4858;opacity:0.35;">Press Enter to add, click x to remove</p>
                     </div>
-
-                    <!-- Max Results -->
                     <div>
-                        <label class="block text-sm font-bold text-gray-700 mb-2">Max Results</label>
-                        <input type="number" id="patreon-max-results" value="100" min="1" max="500" step="1"
-                               class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                        <p class="text-xs text-gray-500 mt-1">Maximum: 500 profiles (typical: 50-100)</p>
+                        <label class="block text-xs font-semibold mb-1.5" style="color:#005c69;">Max Results</label>
+                        <input type="number" id="patreon-max-results" value="100" min="1" max="500" class="input-field">
                     </div>
-
-                    <!-- Location -->
                     <div>
-                        <label class="block text-sm font-bold text-gray-700 mb-2">Location <span class="text-gray-500 font-normal">(Optional)</span></label>
-                        <input type="text" id="patreon-location" value="United States" placeholder="e.g., United States"
-                               class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                        <p class="text-xs text-gray-500 mt-1">Appended to each search query to focus results by geography. Clear to search globally.</p>
+                        <label class="block text-xs font-semibold mb-1.5" style="color:#005c69;">Location <span style="opacity:0.35;font-weight:400;">(Optional)</span></label>
+                        <input type="text" id="patreon-location" value="United States" placeholder="e.g., United States" class="input-field">
                     </div>
-
-                    <!-- Patron Count Range -->
                     <div>
-                        <label class="block text-sm font-bold text-gray-700 mb-2">Patron Count <span class="text-gray-500 font-normal">(Optional)</span></label>
-                        <div class="grid grid-cols-2 gap-4">
+                        <label class="block text-xs font-semibold mb-1.5" style="color:#005c69;">Patron Count <span style="opacity:0.35;font-weight:400;">(Optional)</span></label>
+                        <div class="grid grid-cols-2 gap-3">
                             <div>
-                                <label class="block text-xs text-gray-600 mb-1">Minimum</label>
-                                <input type="number" id="patreon-min-patrons" value="" min="0" step="10" placeholder="e.g. 50"
-                                       class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                <label class="block text-xs mb-1" style="color:#3c4858;opacity:0.5;">Minimum</label>
+                                <input type="number" id="patreon-min-patrons" value="" placeholder="e.g. 50" class="input-field">
                             </div>
                             <div>
-                                <label class="block text-xs text-gray-600 mb-1">Maximum</label>
-                                <input type="number" id="patreon-max-patrons" value="" min="0" step="100" placeholder="e.g. 5000"
-                                       class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                <label class="block text-xs mb-1" style="color:#3c4858;opacity:0.5;">Maximum</label>
+                                <input type="number" id="patreon-max-patrons" value="" placeholder="e.g. 5000" class="input-field">
                             </div>
                         </div>
-                        <p class="text-xs text-gray-500 mt-1">Leave blank to skip filtering by patron count</p>
                     </div>
-
-                    <!-- Minimum Posts -->
                     <div>
-                        <label class="block text-sm font-bold text-gray-700 mb-2">Minimum Posts <span class="text-gray-500 font-normal">(Optional)</span></label>
-                        <input type="number" id="patreon-min-posts" value="" min="0" step="1" placeholder="e.g. 5"
-                               class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                        <p class="text-xs text-gray-500 mt-1">Filter creators by total number of posts published. Leave blank to skip.</p>
+                        <label class="block text-xs font-semibold mb-1.5" style="color:#005c69;">Minimum Posts <span style="opacity:0.35;font-weight:400;">(Optional)</span></label>
+                        <input type="number" id="patreon-min-posts" value="" placeholder="e.g. 5" class="input-field">
                     </div>
                 </div>
-                
+
+                <!-- Facebook Filters (hidden by default) -->
+                <div data-filters="facebook" class="hidden space-y-4">
+                    <div>
+                        <label class="block text-xs font-semibold mb-1.5" style="color:#005c69;">Search Keywords</label>
+                        <div id="facebook-keyword-wrapper"
+                             class="rounded-lg p-2 min-h-[42px] flex flex-wrap gap-1 items-start cursor-text"
+                             style="border:1px solid rgba(60,72,88,0.13);background:white;"
+                             onclick="document.getElementById('facebook-keyword-input').focus()">
+                            <input type="text" id="facebook-keyword-input" placeholder="Type keyword and press Enter..."
+                                   class="flex-1 min-w-[180px] outline-none text-sm py-1 bg-transparent">
+                        </div>
+                        <p class="text-xs mt-1" style="color:#3c4858;opacity:0.35;">Press Enter to add, click x to remove</p>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold mb-1.5" style="color:#005c69;">Max Results</label>
+                        <input type="number" id="facebook-max-results" value="100" min="1" max="500" class="input-field">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold mb-1.5" style="color:#005c69;">Member Count <span style="opacity:0.35;font-weight:400;">(Optional)</span></label>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-xs mb-1" style="color:#3c4858;opacity:0.5;">Minimum</label>
+                                <input type="number" id="facebook-min-members" value="500" class="input-field">
+                            </div>
+                            <div>
+                                <label class="block text-xs mb-1" style="color:#3c4858;opacity:0.5;">Maximum</label>
+                                <input type="number" id="facebook-max-members" value="50000" class="input-field">
+                            </div>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold mb-1.5" style="color:#005c69;">Visibility <span style="opacity:0.35;font-weight:400;">(Optional)</span></label>
+                        <select id="facebook-visibility" class="input-field" style="background:white;">
+                            <option value="all">All groups</option>
+                            <option value="public">Public groups only</option>
+                            <option value="private">Private groups only</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold mb-1.5" style="color:#005c69;">Min Posts / Month <span style="opacity:0.35;font-weight:400;">(Optional)</span></label>
+                        <input type="number" id="facebook-min-posts-month" value="" placeholder="e.g. 10" class="input-field">
+                    </div>
+                    <div class="card p-3" style="border-left:3px solid #00b2c9;">
+                        <p class="text-xs" style="color:#3c4858;">
+                            <strong style="color:#005c69;">Enrichment included:</strong> Website crawl for emails,
+                            social profiles (IG, YouTube, Twitter), Apollo.io contact lookup.
+                        </p>
+                    </div>
+                </div>
+
                 <!-- BDR Round Robin -->
-                <div class="border-t border-gray-200 pt-4">
-                    <label class="block text-sm font-bold text-gray-700 mb-2">
-                        🎯 BDR Round Robin Assignment
-                    </label>
-                    <p class="text-xs text-gray-500 mb-3">
-                        Leads will be distributed equally among selected BDRs in round-robin order. At least one must be selected.
-                    </p>
+                <div style="border-top:1px solid rgba(60,72,88,0.06);padding-top:16px;">
+                    <label class="block text-xs font-semibold mb-1.5" style="color:#005c69;">BDR Round Robin</label>
+                    <p class="text-xs mb-3" style="color:#3c4858;opacity:0.35;">Leads distributed equally among selected BDRs.</p>
                     <div class="grid grid-cols-2 gap-2" id="bdr-checkboxes">
-                        <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-                            <input type="checkbox" class="bdr-checkbox" value="Miriam Plascencia" checked
-                                   class="rounded border-gray-300 text-blue-600">
-                            Miriam Plascencia
+                        <label class="flex items-center gap-2 text-xs cursor-pointer" style="color:#3c4858;">
+                            <input type="checkbox" class="bdr-checkbox" value="Miriam Plascencia" checked> Miriam Plascencia
                         </label>
-                        <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-                            <input type="checkbox" class="bdr-checkbox" value="Majo Juarez" checked
-                                   class="rounded border-gray-300 text-blue-600">
-                            Majo Juarez
+                        <label class="flex items-center gap-2 text-xs cursor-pointer" style="color:#3c4858;">
+                            <input type="checkbox" class="bdr-checkbox" value="Majo Juarez" checked> Majo Juarez
                         </label>
-                        <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-                            <input type="checkbox" class="bdr-checkbox" value="Nicole Roma" checked
-                                   class="rounded border-gray-300 text-blue-600">
-                            Nicole Roma
+                        <label class="flex items-center gap-2 text-xs cursor-pointer" style="color:#3c4858;">
+                            <input type="checkbox" class="bdr-checkbox" value="Nicole Roma" checked> Nicole Roma
                         </label>
-                        <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-                            <input type="checkbox" class="bdr-checkbox" value="Salvatore Renteria" checked
-                                   class="rounded border-gray-300 text-blue-600">
-                            Salvatore Renteria
+                        <label class="flex items-center gap-2 text-xs cursor-pointer" style="color:#3c4858;">
+                            <input type="checkbox" class="bdr-checkbox" value="Salvatore Renteria" checked> Salvatore Renteria
                         </label>
-                        <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-                            <input type="checkbox" class="bdr-checkbox" value="Sofia Gonzalez" checked
-                                   class="rounded border-gray-300 text-blue-600">
-                            Sofia Gonzalez
+                        <label class="flex items-center gap-2 text-xs cursor-pointer" style="color:#3c4858;">
+                            <input type="checkbox" class="bdr-checkbox" value="Sofia Gonzalez" checked> Sofia Gonzalez
                         </label>
-                        <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-                            <input type="checkbox" class="bdr-checkbox" value="Tanya Pina" checked
-                                   class="rounded border-gray-300 text-blue-600">
-                            Tanya Pina
+                        <label class="flex items-center gap-2 text-xs cursor-pointer" style="color:#3c4858;">
+                            <input type="checkbox" class="bdr-checkbox" value="Tanya Pina" checked> Tanya Pina
                         </label>
                     </div>
                 </div>
 
-                <button type="submit"
-                        class="w-full bg-blue-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-blue-700 transition-colors focus:ring-4 focus:ring-blue-300">
-                    🔍 Start Discovery
+                <button type="submit" id="submit-btn" class="btn-primary w-full py-3">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="5" stroke="currentColor" stroke-width="1.5"/><path d="M14.5 14.5L10.5 10.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                    Launch Discovery Run
                 </button>
             </form>
-        </div>
-        
-        <!-- Job Status (Hidden until job starts) -->
-        <div id="job-status" class="bg-white rounded-lg shadow-md p-6 mb-6 hidden">
-            <h2 class="text-xl font-bold mb-4">Job Status</h2>
-            
-            <div class="space-y-4">
-                <div class="flex items-center justify-between">
-                    <span class="font-bold text-gray-700">Status:</span>
-                    <span id="status-badge" class="px-3 py-1 rounded-full text-sm font-medium"></span>
-                </div>
-                
-                <div class="flex items-center justify-between">
-                    <span class="font-bold text-gray-700">Profiles Found:</span>
-                    <span id="profiles-found" class="text-3xl font-bold text-gray-900">0</span>
-                </div>
-                
-                <div class="flex items-center justify-between">
-                    <span class="font-bold text-gray-700">New Contacts Created:</span>
-                    <span id="contacts-created" class="text-3xl font-bold text-green-600">0</span>
-                </div>
-                
-                <div class="flex items-center justify-between">
-                    <span class="font-bold text-gray-700">Duplicates Skipped:</span>
-                    <span id="duplicates-skipped" class="text-sm text-gray-500">0</span>
-                </div>
-                
-                <!-- Progress indicator for discovering status -->
-                <div id="progress-indicator" class="hidden">
-                    <div class="flex items-center text-sm text-gray-600">
-                        <svg class="animate-spin h-4 w-4 mr-2 text-blue-600" fill="none" viewBox="0 0 24 24">
-                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        <span id="progress-text">Processing...</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-        
-        <!-- Recent Jobs -->
-        <div class="bg-white rounded-lg shadow-md p-6">
-            <h2 class="text-xl font-bold mb-4">Recent Discovery Jobs</h2>
-            <div id="recent-jobs"></div>
         </div>
     </div>
 {% endblock %}
 
 {% block scripts %}
-  <script>
-        // Platform switching
-        let selectedPlatform = 'instagram'; // Default
-        
-        document.getElementById('platform-instagram').addEventListener('click', function() {
-            selectedPlatform = 'instagram';
-            
-            // Update button styles
-            document.getElementById('platform-instagram').classList.add('platform-active', 'border-blue-500', 'bg-blue-50');
-            document.getElementById('platform-instagram').classList.remove('border-gray-300', 'bg-white');
-            document.getElementById('platform-patreon').classList.remove('platform-active', 'border-blue-500', 'bg-blue-50');
-            document.getElementById('platform-patreon').classList.add('border-gray-300', 'bg-white');
-            document.getElementById('platform-facebook').classList.remove('platform-active', 'border-blue-500', 'bg-blue-50');
-            document.getElementById('platform-facebook').classList.add('border-gray-300', 'bg-white');
-            
-            // Show/hide filters
-            document.getElementById('instagram-filters').classList.remove('hidden');
-            document.getElementById('patreon-filters').classList.add('hidden');
-            document.getElementById('facebook-filters').classList.add('hidden');
-        });
-        
-        document.getElementById('platform-patreon').addEventListener('click', function() {
-            selectedPlatform = 'patreon';
-            
-            // Update button styles
-            document.getElementById('platform-patreon').classList.add('platform-active', 'border-blue-500', 'bg-blue-50');
-            document.getElementById('platform-patreon').classList.remove('border-gray-300', 'bg-white');
-            document.getElementById('platform-instagram').classList.remove('platform-active', 'border-blue-500', 'bg-blue-50');
-            document.getElementById('platform-instagram').classList.add('border-gray-300', 'bg-white');
-            document.getElementById('platform-facebook').classList.remove('platform-active', 'border-blue-500', 'bg-blue-50');
-            document.getElementById('platform-facebook').classList.add('border-gray-300', 'bg-white');
-            
-            // Show/hide filters
-            document.getElementById('patreon-filters').classList.remove('hidden');
-            document.getElementById('instagram-filters').classList.add('hidden');
-            document.getElementById('facebook-filters').classList.add('hidden');
-        });
-        
-        document.getElementById('platform-facebook').addEventListener('click', function() {
-            selectedPlatform = 'facebook';
-            
-            // Update button styles
-            document.getElementById('platform-facebook').classList.add('platform-active', 'border-blue-500', 'bg-blue-50');
-            document.getElementById('platform-facebook').classList.remove('border-gray-300', 'bg-white');
-            document.getElementById('platform-instagram').classList.remove('platform-active', 'border-blue-500', 'bg-blue-50');
-            document.getElementById('platform-instagram').classList.add('border-gray-300', 'bg-white');
-            document.getElementById('platform-patreon').classList.remove('platform-active', 'border-blue-500', 'bg-blue-50');
-            document.getElementById('platform-patreon').classList.add('border-gray-300', 'bg-white');
-            
-            // Show/hide filters
-            document.getElementById('facebook-filters').classList.remove('hidden');
-            document.getElementById('instagram-filters').classList.add('hidden');
-            document.getElementById('patreon-filters').classList.add('hidden');
-        });
-        
-        // BDR Round Robin: collect selected names, validate at least one
-        function getBdrNames() {
-            return Array.from(document.querySelectorAll('.bdr-checkbox:checked')).map(cb => cb.value);
-        }
+<script>
+// ── Platform switching ───────────────────────────────────────────────
+let selectedPlatform = 'instagram';
 
-        // ── Tag-style Keyword Inputs ──────────────────────────────────────
-        // Shared state: wrapperId → string[]
-        const _tagState = {};
+document.querySelectorAll('.platform-card').forEach(btn => {
+    btn.addEventListener('click', () => {
+        if (btn.disabled) return;
+        selectedPlatform = btn.dataset.platform;
+        document.querySelectorAll('.platform-card').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
 
-        function initTagInput(wrapperId, inputId) {
-            if (!_tagState[wrapperId]) _tagState[wrapperId] = [];
-            const inp = document.getElementById(inputId);
-            inp.addEventListener('keydown', function (e) {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    const val = this.value.trim();
-                    if (val) {
-                        _tagState[wrapperId].push(val);
-                        this.value = '';
-                        _renderTags(wrapperId, inputId);
-                    }
-                }
-            });
-        }
-
-        function _renderTags(wrapperId, inputId) {
-            const wrapper = document.getElementById(wrapperId);
-            const inp = document.getElementById(inputId);
-            // Remove existing tag spans (everything except the input)
-            Array.from(wrapper.children).forEach(child => {
-                if (child !== inp) child.remove();
-            });
-            // Re-insert tag spans before the input
-            _tagState[wrapperId].forEach((tag, i) => {
-                const span = document.createElement('span');
-                span.className = 'inline-flex items-center gap-1 bg-blue-100 text-blue-800 text-xs font-medium px-2 py-1 rounded';
-                span.innerHTML = `${escapeHtml(tag)} <button type="button" onclick="_removeTag('${wrapperId}','${inputId}',${i})" class="text-blue-500 hover:text-blue-900 font-bold leading-none">&times;</button>`;
-                wrapper.insertBefore(span, inp);
-            });
-        }
-
-        function _removeTag(wrapperId, inputId, index) {
-            _tagState[wrapperId].splice(index, 1);
-            _renderTags(wrapperId, inputId);
-        }
-
-        function getTagValues(wrapperId) {
-            return (_tagState[wrapperId] || []).slice();
-        }
-
-        function escapeHtml(str) {
-            return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-        }
-
-        // Initialise tag inputs on page load
-        initTagInput('patreon-keyword-wrapper',  'patreon-keyword-input');
-        initTagInput('facebook-keyword-wrapper', 'facebook-keyword-input');
-
-        // ── Bio Phrase Advanced ───────────────────────────────────────────
-        const BIO_MAX = 15;   // total phrases including the base phrase
-
-        // Show the "Add clause" button only when the base phrase has content
-        document.getElementById('bio-phrase-0').addEventListener('input', function () {
-            const addBtn = document.getElementById('bio-add-btn');
-            const rowCount = document.querySelectorAll('#bio-phrase-rows .bio-action-row').length + 1;
-            addBtn.classList.toggle('hidden', !this.value.trim() || rowCount >= BIO_MAX);
+        // Generic filter section toggle
+        document.querySelectorAll('[data-filters]').forEach(el => {
+            el.classList.toggle('hidden', el.dataset.filters !== selectedPlatform);
         });
 
-        function bioAddClause() {
-            const rowCount = document.querySelectorAll('#bio-phrase-rows .bio-action-row').length + 1;
-            if (rowCount >= BIO_MAX) return;
+        // Update pipeline diagram via HTMX
+        htmx.ajax('GET', '/partials/pipeline-preview?platform=' + selectedPlatform, {target: '#pipeline-stages-list', swap: 'innerHTML'});
+    });
+});
 
-            const idx = rowCount; // 1-based index for advanced clauses
-            const container = document.getElementById('bio-phrase-rows');
+// ── BDR ──────────────────────────────────────────────────────────────
+function getBdrNames() {
+    return Array.from(document.querySelectorAll('.bdr-checkbox:checked')).map(cb => cb.value);
+}
 
-            const row = document.createElement('div');
-            row.className = 'bio-action-row flex items-center gap-2';
-            row.id = `bio-row-${idx}`;
+// ── Tag inputs ───────────────────────────────────────────────────────
+const _tagState = {};
 
-            // Action selector (always visible when row is created)
-            const select = document.createElement('select');
-            select.id = `bio-action-${idx}`;
-            select.className = 'border border-gray-300 rounded-lg px-2 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent';
-            select.innerHTML = `
-                <option value="" disabled selected>Action</option>
-                <option value="AND">AND</option>
-                <option value="OR">OR</option>
-                <option value="NOT">NOT</option>`;
-
-            // Phrase input — hidden until action is chosen
-            const input = document.createElement('input');
-            input.type = 'text';
-            input.id = `bio-phrase-${idx}`;
-            input.placeholder = 'phrase…';
-            input.className = 'flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent hidden';
-
-            // Remove button
-            const removeBtn = document.createElement('button');
-            removeBtn.type = 'button';
-            removeBtn.className = 'text-gray-400 hover:text-red-500 text-lg leading-none';
-            removeBtn.title = 'Remove clause';
-            removeBtn.textContent = '×';
-            removeBtn.onclick = () => { row.remove(); bioRefreshAddBtn(); };
-
-            // Show phrase input once an action is selected
-            select.addEventListener('change', function () {
-                input.classList.toggle('hidden', !this.value);
-                bioRefreshAddBtn();
-            });
-
-            row.appendChild(select);
-            row.appendChild(input);
-            row.appendChild(removeBtn);
-            container.appendChild(row);
-
-            // Hide the add button after inserting (re-evaluated by bioRefreshAddBtn)
-            bioRefreshAddBtn();
-        }
-
-        function bioRefreshAddBtn() {
-            const addBtn = document.getElementById('bio-add-btn');
-            const rows = document.querySelectorAll('#bio-phrase-rows .bio-action-row');
-            const total = 1 + rows.length;   // base phrase + advanced rows
-            const baseHasValue = document.getElementById('bio-phrase-0').value.trim();
-
-            // Show add button only if: base has a value, cap not reached,
-            // AND the last row's action has been chosen (its phrase input is visible)
-            let lastActionChosen = true;
-            if (rows.length > 0) {
-                const lastRow = rows[rows.length - 1];
-                const lastInput = lastRow.querySelector('input[type="text"]');
-                lastActionChosen = lastInput && !lastInput.classList.contains('hidden');
-            }
-
-            addBtn.classList.toggle('hidden', !baseHasValue || total >= BIO_MAX || !lastActionChosen);
-        }
-
-        function getBioPhrases() {
-            const base = document.getElementById('bio-phrase-0').value.trim();
-            const advanced = [];
-            document.querySelectorAll('#bio-phrase-rows .bio-action-row').forEach(row => {
-                const idx = row.id.replace('bio-row-', '');
-                const action = document.getElementById(`bio-action-${idx}`)?.value;
-                const phrase = document.getElementById(`bio-phrase-${idx}`)?.value.trim();
-                if (action && phrase) advanced.push({ bio_phrase: phrase, action });
-            });
-            return { base, advanced };
-        }
-
-        // Lookalike username enable/disable
-        document.querySelectorAll('input[name="lookalike-type"]').forEach(radio => {
-            radio.addEventListener('change', function() {
-                const usernameInput = document.getElementById('lookalike-username');
-                usernameInput.disabled = this.value === 'none';
-                if (this.value === 'none') {
-                    usernameInput.value = '';
-                }
-            });
-        });
-        
-        // Form submission
-        document.getElementById('discovery-form').addEventListener('submit', async function(e) {
+function initTagInput(wrapperId, inputId) {
+    _tagState[wrapperId] = [];
+    const inp = document.getElementById(inputId);
+    inp.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
             e.preventDefault();
-            
-            if (selectedPlatform === 'instagram') {
-                await submitInstagramDiscovery();
-            } else if (selectedPlatform === 'patreon') {
-                await submitPatreonDiscovery();
-            } else if (selectedPlatform === 'facebook') {
-                await submitFacebookDiscovery();
+            const val = this.value.trim();
+            if (val) {
+                _tagState[wrapperId].push(val);
+                this.value = '';
+                _renderTags(wrapperId, inputId);
             }
+        }
+    });
+}
+
+function _renderTags(wrapperId, inputId) {
+    const wrapper = document.getElementById(wrapperId);
+    const inp = document.getElementById(inputId);
+    Array.from(wrapper.children).forEach(child => { if (child !== inp) child.remove(); });
+    _tagState[wrapperId].forEach((tag, i) => {
+        const span = document.createElement('span');
+        span.className = 'tag-pill';
+        span.innerHTML = `${escapeHtml(tag)} <button type="button" onclick="_removeTag('${wrapperId}','${inputId}',${i})">&times;</button>`;
+        wrapper.insertBefore(span, inp);
+    });
+}
+
+function _removeTag(wrapperId, inputId, index) {
+    _tagState[wrapperId].splice(index, 1);
+    _renderTags(wrapperId, inputId);
+}
+
+function getTagValues(wrapperId) { return (_tagState[wrapperId] || []).slice(); }
+
+initTagInput('patreon-keyword-wrapper', 'patreon-keyword-input');
+initTagInput('facebook-keyword-wrapper', 'facebook-keyword-input');
+
+// ── Bio phrase advanced ──────────────────────────────────────────────
+const BIO_MAX = 15;
+
+document.getElementById('bio-phrase-0').addEventListener('input', function() {
+    const rows = document.querySelectorAll('#bio-phrase-rows .bio-action-row').length + 1;
+    document.getElementById('bio-add-btn').classList.toggle('hidden', !this.value.trim() || rows >= BIO_MAX);
+});
+
+function bioAddClause() {
+    const rows = document.querySelectorAll('#bio-phrase-rows .bio-action-row');
+    if (rows.length + 1 >= BIO_MAX) return;
+    const idx = rows.length + 1;
+    const container = document.getElementById('bio-phrase-rows');
+    const row = document.createElement('div');
+    row.className = 'bio-action-row flex items-center gap-2';
+    row.id = `bio-row-${idx}`;
+    row.innerHTML = `
+        <select id="bio-action-${idx}" class="input-field" style="width:auto;padding:8px;font-size:12px;">
+            <option value="" disabled selected>Action</option>
+            <option value="AND">AND</option>
+            <option value="OR">OR</option>
+            <option value="NOT">NOT</option>
+        </select>
+        <input type="text" id="bio-phrase-${idx}" placeholder="phrase..." class="input-field hidden" style="flex:1;">
+        <button type="button" onclick="this.parentElement.remove();bioRefreshAddBtn()" class="text-xs" style="color:#3c4858;opacity:0.4;">&times;</button>`;
+    row.querySelector('select').addEventListener('change', function() {
+        row.querySelector('input[type=text]').classList.toggle('hidden', !this.value);
+        bioRefreshAddBtn();
+    });
+    container.appendChild(row);
+    bioRefreshAddBtn();
+}
+
+function bioRefreshAddBtn() {
+    const rows = document.querySelectorAll('#bio-phrase-rows .bio-action-row');
+    const total = 1 + rows.length;
+    const base = document.getElementById('bio-phrase-0').value.trim();
+    let lastOk = true;
+    if (rows.length > 0) {
+        const last = rows[rows.length - 1].querySelector('input[type=text]');
+        lastOk = last && !last.classList.contains('hidden');
+    }
+    document.getElementById('bio-add-btn').classList.toggle('hidden', !base || total >= BIO_MAX || !lastOk);
+}
+
+function getBioPhrases() {
+    const base = document.getElementById('bio-phrase-0').value.trim();
+    const advanced = [];
+    document.querySelectorAll('#bio-phrase-rows .bio-action-row').forEach(row => {
+        const idx = row.id.replace('bio-row-', '');
+        const action = document.getElementById(`bio-action-${idx}`)?.value;
+        const phrase = document.getElementById(`bio-phrase-${idx}`)?.value.trim();
+        if (action && phrase) advanced.push({ bio_phrase: phrase, action });
+    });
+    return { base, advanced };
+}
+
+// ── Lookalike toggle ─────────────────────────────────────────────────
+document.querySelectorAll('input[name="lookalike-type"]').forEach(radio => {
+    radio.addEventListener('change', function() {
+        const inp = document.getElementById('lookalike-username');
+        inp.disabled = this.value === 'none';
+        if (this.value === 'none') inp.value = '';
+    });
+});
+
+// ── Form submission → POST /api/runs → redirect to /runs/<id> ────────
+document.getElementById('discovery-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+
+    const filters = buildFilters();
+    if (!filters) return; // validation failed
+
+    const bdrNames = getBdrNames();
+    if (bdrNames.length === 0) {
+        alert('Select at least one BDR');
+        return;
+    }
+
+    const btn = document.getElementById('submit-btn');
+    btn.disabled = true;
+    btn.innerHTML = 'Launching...';
+
+    try {
+        const res = await fetch('/api/runs', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                platform: selectedPlatform,
+                filters: filters,
+                bdr_names: bdrNames,
+            }),
         });
-        
-        async function submitInstagramDiscovery() {
-            // Get lookalike settings
-            const lookalikeType = document.querySelector('input[name="lookalike-type"]:checked').value;
-            const lookalikeUsername = document.getElementById('lookalike-username').value.trim();
-            
-            // Validate lookalike
-            if (lookalikeType !== 'none' && !lookalikeUsername) {
-                alert('Please enter a username for lookalike search');
-                return;
-            }
-            
-            // Build filters
-            const filters = {
-                max_results: parseInt(document.getElementById('instagram-max-results').value),
-                follower_count: {
-                    min: parseInt(document.getElementById('min-followers').value),
-                    max: parseInt(document.getElementById('max-followers').value)
-                }
-            };
-            
-            // Validate follower range
-            if (filters.follower_count.min >= filters.follower_count.max) {
-                alert('Minimum followers must be less than maximum followers');
-                return;
-            }
-            
-            // Add lookalike if selected
-            if (lookalikeType !== 'none') {
-                filters.lookalike_type = lookalikeType;
-                filters.lookalike_username = lookalikeUsername;
-            }
-            
-            // Add creator interests if selected
-            const creatorInterestsSelect = document.getElementById('creator-interests');
-            const creatorInterestsSelected = Array.from(creatorInterestsSelect.selectedOptions).map(opt => opt.value);
-            if (creatorInterestsSelected.length > 0) {
-                filters.creator_interests = creatorInterestsSelected;
-            }
-            
-            // Add audience interests if selected
-            const audienceInterestsSelect = document.getElementById('audience-interests');
-            const audienceInterestsSelected = Array.from(audienceInterestsSelect.selectedOptions).map(opt => opt.value);
-            if (audienceInterestsSelected.length > 0) {
-                filters.audience_interests = audienceInterestsSelected;
-            }
-            
-            // Add hashtags if provided
-            const hashtags = document.getElementById('hashtags').value.trim();
-            if (hashtags) {
-                filters.hashtags = hashtags.split(',').map(h => ({name: h.trim()})).filter(h => h.name);
-            }
 
-            // Add bio phrase filter if provided
-            const { base: bioPhraseBase, advanced: bioPhraseAdvanced } = getBioPhrases();
-            if (bioPhraseBase) {
-                filters.bio_phrase = bioPhraseBase;
-                if (bioPhraseAdvanced.length > 0) {
-                    filters.bio_phrase_advanced = bioPhraseAdvanced;
-                }
-            }
+        const data = await res.json();
 
-            // BDR round-robin
-            const bdrNames = getBdrNames();
-
-            filters.bdr_names = bdrNames;
-
-            // Start job
-            try {
-                const response = await fetch('/api/discovery/instagram', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(filters)
-                });
-                
-                const result = await response.json();
-                
-                if (response.ok) {
-                    document.getElementById('job-status').classList.remove('hidden');
-                    pollJobStatus(result.job_id);
-                } else {
-                    alert('Error: ' + result.error);
-                }
-            } catch (error) {
-                alert('Error starting discovery: ' + error.message);
-            }
+        if (res.ok && data.id) {
+            window.location.href = `/runs/${data.id}`;
+        } else {
+            alert('Error: ' + (data.error || 'Unknown error'));
+            btn.disabled = false;
+            btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="5" stroke="currentColor" stroke-width="1.5"/><path d="M14.5 14.5L10.5 10.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg> Launch Discovery Run';
         }
-        
-        async function submitPatreonDiscovery() {
-            // Get keywords from tag input
-            const searchKeywords = getTagValues('patreon-keyword-wrapper');
+    } catch (err) {
+        alert('Error: ' + err.message);
+        btn.disabled = false;
+        btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="5" stroke="currentColor" stroke-width="1.5"/><path d="M14.5 14.5L10.5 10.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg> Launch Discovery Run';
+    }
+});
 
-            if (searchKeywords.length === 0) {
-                alert('Please enter at least one search keyword');
-                return;
-            }
+function buildFilters() {
+    const filters = {};
 
-            // Build filters
-            const filters = {
-                search_keywords: searchKeywords,
-                max_results: parseInt(document.getElementById('patreon-max-results').value)
-            };
-
-            // Location (optional, default "United States")
-            const location = document.getElementById('patreon-location').value.trim();
-            if (location) filters.location = location;
-
-            // Patron count range (optional)
-            const minPatrons = parseInt(document.getElementById('patreon-min-patrons').value) || 0;
-            const maxPatrons = parseInt(document.getElementById('patreon-max-patrons').value) || 0;
-            if (minPatrons > 0) filters.min_patrons = minPatrons;
-            if (maxPatrons > 0) filters.max_patrons = maxPatrons;
-            if (minPatrons > 0 && maxPatrons > 0 && minPatrons >= maxPatrons) {
-                alert('Minimum patron count must be less than maximum');
-                return;
-            }
-
-            // Minimum posts (optional)
-            const minPosts = parseInt(document.getElementById('patreon-min-posts').value) || 0;
-            if (minPosts > 0) filters.min_posts = minPosts;
-
-            // BDR round-robin
-            const bdrNames = getBdrNames();
-
-            filters.bdr_names = bdrNames;
-
-            // Start job
-            try {
-                const response = await fetch('/api/discovery/patreon', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(filters)
-                });
-                
-                const result = await response.json();
-                
-                if (response.ok) {
-                    document.getElementById('job-status').classList.remove('hidden');
-                    pollJobStatus(result.job_id);
-                } else {
-                    alert('Error: ' + result.error);
-                }
-            } catch (error) {
-                alert('Error starting discovery: ' + error.message);
-            }
+    if (selectedPlatform === 'instagram') {
+        filters.max_results = parseInt(document.getElementById('instagram-max-results').value);
+        filters.follower_count = {
+            min: parseInt(document.getElementById('min-followers').value),
+            max: parseInt(document.getElementById('max-followers').value),
+        };
+        if (filters.follower_count.min >= filters.follower_count.max) {
+            alert('Min followers must be less than max');
+            return null;
         }
-        
-        async function submitFacebookDiscovery() {
-            // Get keywords from tag input
-            const keywords = getTagValues('facebook-keyword-wrapper');
 
-            if (keywords.length === 0) {
-                alert('Please enter at least one search keyword');
-                return;
-            }
-
-            // Build filters
-            const filters = {
-                keywords: keywords,
-                max_results: parseInt(document.getElementById('facebook-max-results').value)
-            };
-
-            // Member count range (optional)
-            const minMembers = parseInt(document.getElementById('facebook-min-members').value) || 0;
-            const maxMembers = parseInt(document.getElementById('facebook-max-members').value) || 0;
-            if (minMembers > 0) filters.min_members = minMembers;
-            if (maxMembers > 0) filters.max_members = maxMembers;
-            if (minMembers > 0 && maxMembers > 0 && minMembers >= maxMembers) {
-                alert('Minimum members must be less than maximum members');
-                return;
-            }
-
-            // Visibility (optional)
-            const visibility = document.getElementById('facebook-visibility').value;
-            if (visibility && visibility !== 'all') filters.visibility = visibility;
-
-            // Min posts per month (optional)
-            const minPostsMonth = parseInt(document.getElementById('facebook-min-posts-month').value) || 0;
-            if (minPostsMonth > 0) filters.min_posts_per_month = minPostsMonth;
-
-            // BDR round-robin
-            const bdrNames = getBdrNames();
-
-            filters.bdr_names = bdrNames;
-
-            // Start job
-            try {
-                const response = await fetch('/api/discovery/facebook', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(filters)
-                });
-                
-                const result = await response.json();
-                
-                if (response.ok) {
-                    document.getElementById('job-status').classList.remove('hidden');
-                    pollJobStatus(result.job_id);
-                } else {
-                    alert('Error: ' + result.error);
-                }
-            } catch (error) {
-                alert('Error starting discovery: ' + error.message);
-            }
+        const lt = document.querySelector('input[name="lookalike-type"]:checked').value;
+        const lu = document.getElementById('lookalike-username').value.trim();
+        if (lt !== 'none') {
+            if (!lu) { alert('Enter a username for lookalike search'); return null; }
+            filters.lookalike_type = lt;
+            filters.lookalike_username = lu;
         }
-        
-        // Poll job status (works for all platforms)
-        function pollJobStatus(jobId) {
-            const interval = setInterval(async () => {
-                try {
-                    const response = await fetch(`/api/discovery/jobs/${jobId}`);
-                    const job = await response.json();
-                    
-                    // Update status badge
-                    const statusBadge = document.getElementById('status-badge');
-                    const statusText = job.status.toUpperCase();
-                    
-                    statusBadge.textContent = statusText;
-                    statusBadge.className = 'px-3 py-1 rounded-full text-xs font-bold ';
-                    
-                    if (job.status === 'completed') {
-                        statusBadge.className += 'bg-green-100 text-green-800';
-                        clearInterval(interval);
-                    } else if (job.status === 'failed') {
-                        statusBadge.className += 'bg-red-100 text-red-800';
-                        clearInterval(interval);
-                    } else if (job.status === 'discovering') {
-                        statusBadge.className += 'bg-blue-100 text-blue-800';
-                    } else if (job.status === 'enriching') {
-                        statusBadge.className += 'bg-purple-100 text-purple-800';
-                    } else if (job.status === 'importing') {
-                        statusBadge.className += 'bg-yellow-100 text-yellow-800';
-                    } else {
-                        statusBadge.className += 'bg-gray-100 text-gray-800';
-                    }
-                    
-                    // Update counts
-                    document.getElementById('profiles-found').textContent = job.profiles_found || 0;
-                    document.getElementById('contacts-created').textContent = job.new_contacts_created || 0;
-                    document.getElementById('duplicates-skipped').textContent = job.duplicates_skipped || 0;
-                    
-                    // Show error if failed
-                    if (job.status === 'failed' && job.error) {
-                        alert('Discovery failed: ' + job.error);
-                    }
-                    
-                } catch (error) {
-                    console.error('Error polling status:', error);
-                }
-            }, 3000); // Poll every 3 seconds
+
+        const ci = Array.from(document.getElementById('creator-interests').selectedOptions).map(o => o.value);
+        if (ci.length) filters.creator_interests = ci;
+        const ai = Array.from(document.getElementById('audience-interests').selectedOptions).map(o => o.value);
+        if (ai.length) filters.audience_interests = ai;
+
+        const hashtags = document.getElementById('hashtags').value.trim();
+        if (hashtags) filters.hashtags = hashtags.split(',').map(h => ({name: h.trim()})).filter(h => h.name);
+
+        const { base, advanced } = getBioPhrases();
+        if (base) {
+            filters.bio_phrase = base;
+            if (advanced.length) filters.bio_phrase_advanced = advanced;
         }
-    </script>
+
+    } else if (selectedPlatform === 'patreon') {
+        const kw = getTagValues('patreon-keyword-wrapper');
+        if (!kw.length) { alert('Enter at least one search keyword'); return null; }
+        filters.search_keywords = kw;
+        filters.max_results = parseInt(document.getElementById('patreon-max-results').value);
+
+        const loc = document.getElementById('patreon-location').value.trim();
+        if (loc) filters.location = loc;
+
+        const minP = parseInt(document.getElementById('patreon-min-patrons').value) || 0;
+        const maxP = parseInt(document.getElementById('patreon-max-patrons').value) || 0;
+        if (minP > 0) filters.min_patrons = minP;
+        if (maxP > 0) filters.max_patrons = maxP;
+        if (minP > 0 && maxP > 0 && minP >= maxP) { alert('Min patrons must be less than max'); return null; }
+
+        const minPosts = parseInt(document.getElementById('patreon-min-posts').value) || 0;
+        if (minPosts > 0) filters.min_posts = minPosts;
+
+    } else if (selectedPlatform === 'facebook') {
+        const kw = getTagValues('facebook-keyword-wrapper');
+        if (!kw.length) { alert('Enter at least one search keyword'); return null; }
+        filters.keywords = kw;
+        filters.max_results = parseInt(document.getElementById('facebook-max-results').value);
+
+        const minM = parseInt(document.getElementById('facebook-min-members').value) || 0;
+        const maxM = parseInt(document.getElementById('facebook-max-members').value) || 0;
+        if (minM > 0) filters.min_members = minM;
+        if (maxM > 0) filters.max_members = maxM;
+        if (minM > 0 && maxM > 0 && minM >= maxM) { alert('Min members must be less than max'); return null; }
+
+        const vis = document.getElementById('facebook-visibility').value;
+        if (vis !== 'all') filters.visibility = vis;
+
+        const minPPM = parseInt(document.getElementById('facebook-min-posts-month').value) || 0;
+        if (minPPM > 0) filters.min_posts_per_month = minPPM;
+    }
+
+    return filters;
+}
+
+// ── Presets ──────────────────────────────────────────────────────────
+let _presets = [];
+
+async function loadPresets() {
+    try {
+        const res = await fetch('/api/presets?platform=' + selectedPlatform);
+        _presets = await res.json();
+        const sel = document.getElementById('preset-select');
+        sel.innerHTML = '<option value="">Select a preset...</option>';
+        _presets.forEach(p => {
+            const opt = document.createElement('option');
+            opt.value = p.id;
+            opt.textContent = p.name;
+            sel.appendChild(opt);
+        });
+    } catch(e) { console.error('Failed to load presets:', e); }
+}
+
+function loadPreset(presetId) {
+    if (!presetId) return;
+    const preset = _presets.find(p => String(p.id) === String(presetId));
+    if (!preset) return;
+
+    const f = preset.filters;
+    if (selectedPlatform === 'instagram') {
+        if (f.max_results) document.getElementById('instagram-max-results').value = f.max_results;
+        if (f.follower_count) {
+            document.getElementById('min-followers').value = f.follower_count.min || 20000;
+            document.getElementById('max-followers').value = f.follower_count.max || 900000;
+        }
+        if (f.bio_phrase) document.getElementById('bio-phrase-0').value = f.bio_phrase;
+    } else if (selectedPlatform === 'patreon') {
+        if (f.max_results) document.getElementById('patreon-max-results').value = f.max_results;
+        if (f.location) document.getElementById('patreon-location').value = f.location;
+        if (f.search_keywords && f.search_keywords.length) {
+            _tagState['patreon-keyword-wrapper'] = f.search_keywords.slice();
+            _renderTags('patreon-keyword-wrapper', 'patreon-keyword-input');
+        }
+    } else if (selectedPlatform === 'facebook') {
+        if (f.max_results) document.getElementById('facebook-max-results').value = f.max_results;
+        if (f.keywords && f.keywords.length) {
+            _tagState['facebook-keyword-wrapper'] = f.keywords.slice();
+            _renderTags('facebook-keyword-wrapper', 'facebook-keyword-input');
+        }
+    }
+}
+
+async function savePreset() {
+    const filters = buildFilters();
+    if (!filters) return;
+    const name = prompt('Preset name:');
+    if (!name) return;
+    try {
+        const res = await fetch('/api/presets', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({name, platform: selectedPlatform, filters}),
+        });
+        if (res.ok) loadPresets();
+        else alert('Failed to save preset');
+    } catch(e) { alert('Error: ' + e.message); }
+}
+
+// Load presets on init + platform switch
+loadPresets();
+document.querySelectorAll('.platform-card').forEach(btn => {
+    btn.addEventListener('click', () => { if (!btn.disabled) setTimeout(loadPresets, 100); });
+});
+
+// ── Staleness check ──────────────────────────────────────────────────
+async function checkStaleness() {
+    try {
+        const filters = buildFilters();
+        if (!filters) return;
+        const url = '/api/filter-staleness?platform=' + selectedPlatform +
+                    '&filters=' + encodeURIComponent(JSON.stringify(filters));
+        const res = await fetch(url);
+        const data = await res.json();
+        const el = document.getElementById('staleness-warning');
+        if (data.stale) {
+            document.getElementById('staleness-text').textContent =
+                `Last run with these filters: ${data.last_run_days_ago}d ago, ${data.novelty_rate}% novelty. Consider adjusting filters.`;
+            el.classList.remove('hidden');
+        } else {
+            el.classList.add('hidden');
+        }
+    } catch(e) { /* staleness check is best-effort */ }
+}
+
+// Debounced staleness check on filter changes
+let _stalenessTimer;
+function debouncedStaleness() {
+    clearTimeout(_stalenessTimer);
+    _stalenessTimer = setTimeout(checkStaleness, 1500);
+}
+document.querySelectorAll('.input-field').forEach(el => {
+    el.addEventListener('change', debouncedStaleness);
+});
+</script>
 {% endblock %}

@@ -1,6 +1,6 @@
 flask==3.0.0
 gunicorn==21.2.0
-celery==5.3.4
+rq>=1.16.0
 redis==5.0.1
 requests==2.31.0
 openai>=1.30.0
@@ -10,3 +10,6 @@ pyyaml==6.0.1
 pandas>=2.1.0
 apify-client>=1.7.0
 beautifulsoup4>=4.12.0
+sqlalchemy>=2.0.0
+alembic>=1.13.0
+psycopg2-binary>=2.9.9

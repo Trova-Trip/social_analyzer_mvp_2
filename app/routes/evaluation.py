@@ -1,0 +1,276 @@
+"""
+Evaluation blueprint — analytics dashboard + API endpoints + benchmarks.
+
+Queries the database for pipeline performance metrics.
+"""
+from datetime import datetime, timedelta
+from flask import Blueprint, render_template, jsonify, request
+
+from app.database import get_session
+
+bp = Blueprint('evaluation', __name__)
+
+
+# ── Page ──────────────────────────────────────────────────────────────────────
+
+@bp.route('/evaluation')
+def evaluation_page():
+    return render_template('evaluation.html', active_page='evaluation')
+
+
+# ── HTMX Partial: KPI cards ─────────────────────────────────────────────────
+
+@bp.route('/partials/eval-kpis')
+def eval_kpis_partial():
+    """HTMX partial: evaluation KPI cards."""
+    session = get_session()
+    try:
+        from sqlalchemy import func
+        from app.models.lead_run import LeadRun
+
+        tier_rows = session.query(
+            LeadRun.priority_tier,
+            func.count(LeadRun.id).label('count'),
+        ).filter(
+            LeadRun.priority_tier.isnot(None)
+        ).group_by(LeadRun.priority_tier).all()
+
+        tiers = {row.priority_tier: row.count for row in tier_rows}
+
+        score_rows = session.query(
+            func.avg(LeadRun.lead_score).label('avg_score'),
+            func.count(LeadRun.id).label('scored_count'),
+        ).filter(LeadRun.lead_score.isnot(None)).first()
+
+        data = {
+            'tier_distribution': tiers,
+            'avg_lead_score': round(float(score_rows.avg_score or 0), 3),
+            'total_scored': score_rows.scored_count,
+        }
+    except Exception:
+        data = {'tier_distribution': {}, 'avg_lead_score': 0, 'total_scored': 0}
+    finally:
+        session.close()
+
+    tiers = data.get('tier_distribution', {})
+    total = sum(tiers.values()) or 1
+    auto_rate = round((tiers.get('auto_enroll', 0) / total) * 100, 1)
+
+    return render_template('partials/eval_kpis.html',
+                           total_scored=data.get('total_scored', 0),
+                           avg_score=data.get('avg_lead_score', 0),
+                           auto_rate=auto_rate)
+
+
+# ── API: Channel comparison ───────────────────────────────────────────────────
+
+@bp.route('/api/evaluation/channels')
+def api_channels():
+    """Per-platform metrics: run count, avg scored, avg auto_enroll rate, avg duration."""
+    session = get_session()
+    try:
+        from sqlalchemy import func
+        from app.models.db_run import DbRun
+
+        rows = session.query(
+            DbRun.platform,
+            func.count(DbRun.id).label('run_count'),
+            func.avg(DbRun.profiles_found).label('avg_found'),
+            func.avg(DbRun.profiles_scored).label('avg_scored'),
+            func.avg(DbRun.contacts_synced).label('avg_synced'),
+        ).filter(
+            DbRun.status == 'completed'
+        ).group_by(DbRun.platform).all()
+
+        # Compute average duration in Python to avoid Postgres-specific extract('epoch')
+        completed_runs = session.query(
+            DbRun.platform, DbRun.created_at, DbRun.finished_at
+        ).filter(
+            DbRun.status == 'completed',
+            DbRun.finished_at.isnot(None),
+        ).all()
+
+        # Aggregate durations per platform
+        duration_sums = {}
+        duration_counts = {}
+        for run in completed_runs:
+            if run.created_at and run.finished_at:
+                secs = (run.finished_at - run.created_at).total_seconds()
+                duration_sums[run.platform] = duration_sums.get(run.platform, 0) + secs
+                duration_counts[run.platform] = duration_counts.get(run.platform, 0) + 1
+
+        # 30-day rolling averages
+        thirty_days_ago = datetime.now() - timedelta(days=30)
+        recent_rows = session.query(
+            DbRun.platform,
+            func.avg(DbRun.profiles_found).label('avg_found_30d'),
+            func.avg(DbRun.profiles_scored).label('avg_scored_30d'),
+            func.avg(DbRun.contacts_synced).label('avg_synced_30d'),
+        ).filter(
+            DbRun.status == 'completed',
+            DbRun.created_at >= thirty_days_ago,
+        ).group_by(DbRun.platform).all()
+
+        rolling = {r.platform: {
+            'avg_found_30d': round(float(r.avg_found_30d or 0)),
+            'avg_scored_30d': round(float(r.avg_scored_30d or 0)),
+            'avg_synced_30d': round(float(r.avg_synced_30d or 0)),
+        } for r in recent_rows}
+
+        result = []
+        for row in rows:
+            avg_dur_sec = 0
+            if row.platform in duration_counts and duration_counts[row.platform] > 0:
+                avg_dur_sec = duration_sums[row.platform] / duration_counts[row.platform]
+            entry = {
+                'platform': row.platform,
+                'run_count': row.run_count,
+                'avg_found': round(float(row.avg_found or 0)),
+                'avg_scored': round(float(row.avg_scored or 0)),
+                'avg_synced': round(float(row.avg_synced or 0)),
+                'avg_duration_min': round(avg_dur_sec / 60, 1),
+            }
+            entry.update(rolling.get(row.platform, {}))
+            result.append(entry)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
+
+
+# ── API: Funnel drop-off ─────────────────────────────────────────────────────
+
+@bp.route('/api/evaluation/funnel')
+def api_funnel():
+    """Count of leads at each stage_reached, optionally filtered by platform."""
+    platform = request.args.get('platform')
+
+    session = get_session()
+    try:
+        from sqlalchemy import func
+        from app.models.lead_run import LeadRun
+        from app.models.db_run import DbRun
+
+        query = session.query(
+            LeadRun.stage_reached,
+            func.count(LeadRun.id).label('count'),
+        ).join(DbRun, LeadRun.run_id == DbRun.id)
+
+        if platform:
+            query = query.filter(DbRun.platform == platform)
+
+        rows = query.group_by(LeadRun.stage_reached).all()
+
+        stage_order = ['discovery', 'pre_screen', 'enrichment', 'analysis', 'scoring', 'crm_sync']
+        counts = {row.stage_reached: row.count for row in rows}
+        result = [{'stage': s, 'count': counts.get(s, 0)} for s in stage_order]
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
+
+
+# ── API: Scoring analysis ────────────────────────────────────────────────────
+
+@bp.route('/api/evaluation/scoring')
+def api_scoring():
+    """Tier distribution + average section scores."""
+    session = get_session()
+    try:
+        from sqlalchemy import func
+        from app.models.lead_run import LeadRun
+
+        # Tier distribution
+        tier_rows = session.query(
+            LeadRun.priority_tier,
+            func.count(LeadRun.id).label('count'),
+        ).filter(
+            LeadRun.priority_tier.isnot(None)
+        ).group_by(LeadRun.priority_tier).all()
+
+        tiers = {row.priority_tier: row.count for row in tier_rows}
+
+        # Average scores
+        score_rows = session.query(
+            func.avg(LeadRun.lead_score).label('avg_score'),
+            func.count(LeadRun.id).label('scored_count'),
+        ).filter(LeadRun.lead_score.isnot(None)).first()
+
+        return jsonify({
+            'tier_distribution': tiers,
+            'avg_lead_score': round(float(score_rows.avg_score or 0), 3),
+            'total_scored': score_rows.scored_count,
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
+
+
+# ── API: Trends (time-series for benchmark charts) ───────────────────────────
+
+@bp.route('/api/evaluation/trends')
+def api_trends():
+    """Time-series data for trend charts. Returns daily aggregates."""
+    days = request.args.get('days', 30, type=int)
+    platform = request.args.get('platform')
+
+    session = get_session()
+    try:
+        from sqlalchemy import func, cast, Date
+        from app.models.db_run import DbRun
+
+        cutoff = datetime.now() - timedelta(days=days)
+
+        query = session.query(
+            cast(DbRun.created_at, Date).label('date'),
+            DbRun.platform,
+            func.count(DbRun.id).label('runs'),
+            func.avg(DbRun.profiles_found).label('avg_found'),
+            func.avg(DbRun.profiles_scored).label('avg_scored'),
+            func.avg(DbRun.contacts_synced).label('avg_synced'),
+        ).filter(
+            DbRun.status == 'completed',
+            DbRun.created_at >= cutoff,
+        )
+
+        if platform:
+            query = query.filter(DbRun.platform == platform)
+
+        rows = query.group_by(
+            cast(DbRun.created_at, Date), DbRun.platform
+        ).order_by(cast(DbRun.created_at, Date)).all()
+
+        result = []
+        for row in rows:
+            result.append({
+                'date': row.date.isoformat() if row.date else None,
+                'platform': row.platform,
+                'runs': row.runs,
+                'avg_found': round(float(row.avg_found or 0)),
+                'avg_scored': round(float(row.avg_scored or 0)),
+                'avg_synced': round(float(row.avg_synced or 0)),
+            })
+
+        # Compute 30-day rolling average for deviation detection
+        if result:
+            total_found = sum(r['avg_found'] for r in result) / len(result)
+            total_scored = sum(r['avg_scored'] for r in result) / len(result)
+            total_synced = sum(r['avg_synced'] for r in result) / len(result)
+        else:
+            total_found = total_scored = total_synced = 0
+
+        return jsonify({
+            'daily': result,
+            'rolling_avg': {
+                'avg_found': round(total_found),
+                'avg_scored': round(total_scored),
+                'avg_synced': round(total_synced),
+            }
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()

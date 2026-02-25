@@ -1,0 +1,334 @@
+{% extends "base.html" %}
+{% set active_page = "evaluation" %}
+
+{% block title %}Evaluation{% endblock %}
+{% block page_title %}Evaluation{% endblock %}
+
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" defer></script>
+<style>
+    .chart-wrap {
+        position: relative;
+        padding: 20px;
+    }
+    .chart-wrap canvas {
+        max-height: 320px;
+    }
+    .eval-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+    }
+    @media (max-width: 900px) {
+        .eval-grid { grid-template-columns: 1fr; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Header -->
+<div class="mb-5 animate-in">
+    <h1 class="text-xl font-bold" style="color:#005c69;">Pipeline Evaluation</h1>
+    <p class="text-sm mt-0.5" style="color:#3c4858;opacity:0.6;">Channel performance, funnel health &amp; scoring quality</p>
+</div>
+
+<!-- KPI row (loaded via HTMX) -->
+<div class="grid grid-cols-3 gap-4 mb-5 animate-in" style="animation-delay:0.04s;" id="kpi-row"
+     hx-get="/partials/eval-kpis" hx-trigger="load" hx-swap="innerHTML">
+</div>
+
+<!-- Charts -->
+<div class="eval-grid animate-in" style="animation-delay:0.08s;">
+
+    <!-- Channel Performance -->
+    <div class="card" style="grid-column: 1 / -1;">
+        <div class="flex items-center justify-between px-5 pt-4 pb-1">
+            <span class="section-label">Channel Performance</span>
+            <span class="text-xs" style="color:#3c4858;opacity:0.35;" id="channel-runs-label"></span>
+        </div>
+        <div class="chart-wrap">
+            <canvas id="channelChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Funnel -->
+    <div class="card">
+        <div class="flex items-center justify-between px-5 pt-4 pb-1">
+            <span class="section-label">Funnel Drop-off</span>
+            <select class="input-field" style="width:auto;padding:4px 10px;font-size:12px;" id="funnel-platform">
+                <option value="">All platforms</option>
+                <option value="instagram">Instagram</option>
+                <option value="patreon">Patreon</option>
+                <option value="facebook">Facebook</option>
+            </select>
+        </div>
+        <div class="chart-wrap">
+            <canvas id="funnelChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Tier Distribution -->
+    <div class="card">
+        <div class="px-5 pt-4 pb-1">
+            <span class="section-label">Tier Distribution</span>
+        </div>
+        <div class="chart-wrap" style="display:flex;align-items:center;justify-content:center;">
+            <canvas id="tierChart" style="max-width:320px;max-height:320px;"></canvas>
+        </div>
+    </div>
+
+    <!-- Trends -->
+    <div class="card" style="grid-column: 1 / -1;">
+        <div class="flex items-center justify-between px-5 pt-4 pb-1">
+            <span class="section-label">30-Day Trends</span>
+            <select class="input-field" style="width:auto;padding:4px 10px;font-size:12px;" id="trends-platform">
+                <option value="">All platforms</option>
+                <option value="instagram">Instagram</option>
+                <option value="patreon">Patreon</option>
+                <option value="facebook">Facebook</option>
+            </select>
+        </div>
+        <div class="chart-wrap">
+            <canvas id="trendsChart"></canvas>
+        </div>
+        <div class="px-5 pb-4 flex gap-4" id="benchmark-badges"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const COLORS = {
+    teal:    '#00b2c9',
+    tealDk:  '#005c69',
+    coral:   '#f65c4e',
+    emerald: '#10b981',
+    amber:   '#f59e0b',
+    slate:   '#5a6779',
+};
+
+const CHART_DEFAULTS = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+        legend: {
+            labels: { font: { family: 'DM Sans', size: 11, weight: 500 }, color: '#5a6779', boxWidth: 10, padding: 14 }
+        }
+    },
+    scales: {
+        x: { ticks: { font: { family: 'DM Sans', size: 11 }, color: '#5a6779' }, grid: { color: 'rgba(60,72,88,0.06)' } },
+        y: { ticks: { font: { family: 'DM Sans', size: 11 }, color: '#5a6779' }, grid: { color: 'rgba(60,72,88,0.06)' } },
+    }
+};
+
+let channelChart, funnelChart, tierChart, trendsChart;
+
+/* ── Channel Performance ──────────────────────────── */
+async function loadChannels() {
+    const res = await fetch('/api/evaluation/channels');
+    const data = await res.json();
+    if (data.error) return;
+
+    const totalRuns = data.reduce((s, d) => s + d.run_count, 0);
+    document.getElementById('channel-runs-label').textContent = totalRuns + ' completed runs';
+
+    const labels = data.map(d => d.platform.charAt(0).toUpperCase() + d.platform.slice(1));
+    const ctx = document.getElementById('channelChart').getContext('2d');
+
+    if (channelChart) channelChart.destroy();
+    channelChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels,
+            datasets: [
+                { label: 'Avg Scored',  data: data.map(d => d.avg_scored), backgroundColor: COLORS.teal,    borderRadius: 4, barPercentage: 0.7 },
+                { label: 'Avg Synced',  data: data.map(d => d.avg_synced), backgroundColor: COLORS.tealDk,  borderRadius: 4, barPercentage: 0.7 },
+                { label: 'Avg Found',   data: data.map(d => d.avg_found),  backgroundColor: 'rgba(60,72,88,0.12)', borderRadius: 4, barPercentage: 0.7 },
+            ]
+        },
+        options: {
+            ...CHART_DEFAULTS,
+            indexAxis: 'y',
+            plugins: { ...CHART_DEFAULTS.plugins },
+        }
+    });
+}
+
+/* ── Funnel ───────────────────────────────────────── */
+async function loadFunnel(platform) {
+    const url = '/api/evaluation/funnel' + (platform ? '?platform=' + platform : '');
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data.error) return;
+
+    const stageLabels = {
+        discovery: 'Discovery', pre_screen: 'Pre-screen', enrichment: 'Enrichment',
+        analysis: 'Analysis', scoring: 'Scoring', crm_sync: 'CRM Sync'
+    };
+
+    const labels = data.map(d => stageLabels[d.stage] || d.stage);
+    const counts = data.map(d => d.count);
+
+    // Gradient: green for high counts tapering to coral for drop-off
+    const maxC = Math.max(...counts);
+    const colors = counts.map(c => {
+        const ratio = maxC > 0 ? c / maxC : 1;
+        return ratio > 0.85 ? COLORS.teal : ratio > 0.7 ? COLORS.tealDk : ratio > 0.5 ? COLORS.amber : COLORS.coral;
+    });
+
+    const ctx = document.getElementById('funnelChart').getContext('2d');
+    if (funnelChart) funnelChart.destroy();
+    funnelChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels,
+            datasets: [{
+                label: 'Leads',
+                data: counts,
+                backgroundColor: colors,
+                borderRadius: 5,
+                barPercentage: 0.65,
+            }]
+        },
+        options: {
+            ...CHART_DEFAULTS,
+            plugins: { ...CHART_DEFAULTS.plugins, legend: { display: false } },
+        }
+    });
+}
+
+document.getElementById('funnel-platform').addEventListener('change', (e) => {
+    loadFunnel(e.target.value);
+});
+
+/* ── Scoring / Tier ───────────────────────────────── */
+async function loadScoring() {
+    const res = await fetch('/api/evaluation/scoring');
+    const data = await res.json();
+    if (data.error) return;
+
+    // KPIs are now loaded via HTMX partial
+
+    // Doughnut
+    const tiers = data.tier_distribution || {};
+    const tierLabels = {
+        auto_enroll: 'Auto-Enroll',
+        high_priority_review: 'High Priority',
+        standard_priority_review: 'Standard',
+        low_priority_review: 'Low Priority',
+    };
+    const tierColors = [COLORS.emerald, COLORS.teal, COLORS.amber, COLORS.slate];
+    const tierKeys = ['auto_enroll', 'high_priority_review', 'standard_priority_review', 'low_priority_review'];
+
+    const ctx = document.getElementById('tierChart').getContext('2d');
+    if (tierChart) tierChart.destroy();
+    tierChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: tierKeys.map(k => tierLabels[k]),
+            datasets: [{
+                data: tierKeys.map(k => tiers[k] || 0),
+                backgroundColor: tierColors,
+                borderWidth: 2,
+                borderColor: '#fff',
+                hoverOffset: 6,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            cutout: '58%',
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: { font: { family: 'DM Sans', size: 11, weight: 500 }, color: '#5a6779', boxWidth: 10, padding: 14 }
+                }
+            }
+        }
+    });
+}
+
+/* ── Trends ──────────────────────────────────────── */
+async function loadTrends(platform) {
+    const url = '/api/evaluation/trends?days=30' + (platform ? '&platform=' + platform : '');
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data.error) return;
+
+    const daily = data.daily || [];
+    const rolling = data.rolling_avg || {};
+
+    const labels = daily.map(d => d.date ? d.date.slice(5) : '');
+    const ctx = document.getElementById('trendsChart').getContext('2d');
+
+    if (trendsChart) trendsChart.destroy();
+    trendsChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [
+                {
+                    label: 'Found',
+                    data: daily.map(d => d.avg_found),
+                    borderColor: 'rgba(60,72,88,0.3)',
+                    backgroundColor: 'rgba(60,72,88,0.05)',
+                    borderWidth: 1.5,
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 2,
+                },
+                {
+                    label: 'Scored',
+                    data: daily.map(d => d.avg_scored),
+                    borderColor: COLORS.teal,
+                    backgroundColor: 'rgba(0,178,201,0.08)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 2,
+                },
+                {
+                    label: 'Synced',
+                    data: daily.map(d => d.avg_synced),
+                    borderColor: COLORS.emerald,
+                    backgroundColor: 'rgba(16,185,129,0.08)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 2,
+                },
+            ]
+        },
+        options: {
+            ...CHART_DEFAULTS,
+            plugins: { ...CHART_DEFAULTS.plugins },
+        }
+    });
+
+    // Benchmark badges
+    const badges = document.getElementById('benchmark-badges');
+    badges.innerHTML = '';
+    if (rolling.avg_found) {
+        badges.innerHTML += `<span class="badge badge-muted">30d avg found: ${rolling.avg_found}</span>`;
+    }
+    if (rolling.avg_scored) {
+        badges.innerHTML += `<span class="badge badge-info">30d avg scored: ${rolling.avg_scored}</span>`;
+    }
+    if (rolling.avg_synced) {
+        badges.innerHTML += `<span class="badge badge-success">30d avg synced: ${rolling.avg_synced}</span>`;
+    }
+}
+
+document.getElementById('trends-platform').addEventListener('change', (e) => {
+    loadTrends(e.target.value);
+});
+
+/* ── Init ─────────────────────────────────────────── */
+window.addEventListener('DOMContentLoaded', () => {
+    loadChannels();
+    loadFunnel('');
+    loadScoring();
+    loadTrends('');
+});
+</script>
+{% endblock %}
