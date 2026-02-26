@@ -5,7 +5,6 @@
 {% block page_title %}Evaluation{% endblock %}
 
 {% block head %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" defer></script>
 <style>
     .chart-wrap {
         position: relative;
@@ -123,11 +122,37 @@ const CHART_DEFAULTS = {
 
 let channelChart, funnelChart, tierChart, trendsChart;
 
+function showEmptyState(canvasId, message) {
+    const canvas = document.getElementById(canvasId);
+    const wrap = canvas.closest('.chart-wrap');
+    canvas.style.display = 'none';
+    if (!wrap.querySelector('.empty-state')) {
+        const el = document.createElement('div');
+        el.className = 'empty-state';
+        el.style.cssText = 'display:flex;align-items:center;justify-content:center;min-height:160px;color:#5a6779;opacity:0.5;font-size:13px;font-family:DM Sans,sans-serif;';
+        el.textContent = message;
+        wrap.appendChild(el);
+    }
+}
+
+function clearEmptyState(canvasId) {
+    const canvas = document.getElementById(canvasId);
+    const wrap = canvas.closest('.chart-wrap');
+    canvas.style.display = '';
+    const empty = wrap.querySelector('.empty-state');
+    if (empty) empty.remove();
+}
+
 /* ── Channel Performance ──────────────────────────── */
 async function loadChannels() {
     const res = await fetch('/api/evaluation/channels');
     const data = await res.json();
-    if (data.error) return;
+    if (data.error || !Array.isArray(data) || data.length === 0) {
+        showEmptyState('channelChart', 'No completed runs yet');
+        document.getElementById('channel-runs-label').textContent = '0 completed runs';
+        return;
+    }
+    clearEmptyState('channelChart');
 
     const totalRuns = data.reduce((s, d) => s + d.run_count, 0);
     document.getElementById('channel-runs-label').textContent = totalRuns + ' completed runs';
@@ -159,7 +184,16 @@ async function loadFunnel(platform) {
     const url = '/api/evaluation/funnel' + (platform ? '?platform=' + platform : '');
     const res = await fetch(url);
     const data = await res.json();
-    if (data.error) return;
+    if (data.error || !Array.isArray(data)) {
+        showEmptyState('funnelChart', 'No funnel data available');
+        return;
+    }
+    const hasData = data.some(d => d.count > 0);
+    if (!hasData) {
+        showEmptyState('funnelChart', 'No leads processed yet');
+        return;
+    }
+    clearEmptyState('funnelChart');
 
     const stageLabels = {
         discovery: 'Discovery', pre_screen: 'Pre-screen', enrichment: 'Enrichment',
@@ -205,12 +239,18 @@ document.getElementById('funnel-platform').addEventListener('change', (e) => {
 async function loadScoring() {
     const res = await fetch('/api/evaluation/scoring');
     const data = await res.json();
-    if (data.error) return;
+    if (data.error) {
+        showEmptyState('tierChart', 'No scoring data available');
+        return;
+    }
 
-    // KPIs are now loaded via HTMX partial
-
-    // Doughnut
     const tiers = data.tier_distribution || {};
+    const totalTiers = Object.values(tiers).reduce((s, v) => s + v, 0);
+    if (totalTiers === 0) {
+        showEmptyState('tierChart', 'No scored leads yet');
+        return;
+    }
+    clearEmptyState('tierChart');
     const tierLabels = {
         auto_enroll: 'Auto-Enroll',
         high_priority_review: 'High Priority',
@@ -253,9 +293,17 @@ async function loadTrends(platform) {
     const url = '/api/evaluation/trends?days=30' + (platform ? '&platform=' + platform : '');
     const res = await fetch(url);
     const data = await res.json();
-    if (data.error) return;
+    if (data.error) {
+        showEmptyState('trendsChart', 'No trend data available');
+        return;
+    }
 
     const daily = data.daily || [];
+    if (daily.length === 0) {
+        showEmptyState('trendsChart', 'No runs in the last 30 days');
+        return;
+    }
+    clearEmptyState('trendsChart');
     const rolling = data.rolling_avg || {};
 
     const labels = daily.map(d => d.date ? d.date.slice(5) : '');
@@ -323,12 +371,30 @@ document.getElementById('trends-platform').addEventListener('change', (e) => {
     loadTrends(e.target.value);
 });
 
+/* ── Chart.js loader (works with HTMX boost navigation) ── */
+function ensureChartJs() {
+    return new Promise((resolve) => {
+        if (typeof Chart !== 'undefined') { resolve(); return; }
+        const s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js';
+        s.onload = resolve;
+        document.head.appendChild(s);
+    });
+}
+
 /* ── Init ─────────────────────────────────────────── */
-window.addEventListener('DOMContentLoaded', () => {
+async function initEvalCharts() {
+    await ensureChartJs();
     loadChannels();
     loadFunnel('');
     loadScoring();
     loadTrends('');
-});
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initEvalCharts);
+} else {
+    initEvalCharts();
+}
 </script>
 {% endblock %}

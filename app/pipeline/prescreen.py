@@ -8,7 +8,7 @@ Facebook:  Member count + visibility + posts/month.
 import json
 import base64
 from io import BytesIO
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Any, Tuple
 
 import requests
@@ -41,7 +41,7 @@ def check_post_frequency(content_items: List[Dict[str, Any]]) -> Tuple[bool, str
             return True, "No valid publish dates found"
 
         dates.sort(reverse=True)
-        current_date = datetime.now()
+        current_date = datetime.now(timezone.utc)
         six_weeks = timedelta(weeks=6)
 
         most_recent = dates[0]

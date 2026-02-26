@@ -143,28 +143,37 @@ def api_channels():
 
 @bp.route('/api/evaluation/funnel')
 def api_funnel():
-    """Count of leads at each stage_reached, optionally filtered by platform."""
+    """Funnel drop-off derived from run-level aggregate counters on DbRun."""
     platform = request.args.get('platform')
 
     session = get_session()
     try:
         from sqlalchemy import func
-        from app.models.lead_run import LeadRun
         from app.models.db_run import DbRun
 
         query = session.query(
-            LeadRun.stage_reached,
-            func.count(LeadRun.id).label('count'),
-        ).join(DbRun, LeadRun.run_id == DbRun.id)
+            func.coalesce(func.sum(DbRun.profiles_found), 0).label('found'),
+            func.coalesce(func.sum(DbRun.profiles_pre_screened), 0).label('pre_screened'),
+            func.coalesce(func.sum(DbRun.profiles_enriched), 0).label('enriched'),
+            func.coalesce(func.sum(DbRun.profiles_scored), 0).label('scored'),
+            func.coalesce(func.sum(DbRun.contacts_synced), 0).label('synced'),
+        ).filter(DbRun.status == 'completed')
 
         if platform:
             query = query.filter(DbRun.platform == platform)
 
-        rows = query.group_by(LeadRun.stage_reached).all()
+        row = query.first()
 
-        stage_order = ['discovery', 'pre_screen', 'enrichment', 'analysis', 'scoring', 'crm_sync']
-        counts = {row.stage_reached: row.count for row in rows}
-        result = [{'stage': s, 'count': counts.get(s, 0)} for s in stage_order]
+        # Analysis doesn't drop profiles, so use enriched count as proxy
+        enriched = int(row.enriched)
+        result = [
+            {'stage': 'discovery',  'count': int(row.found)},
+            {'stage': 'pre_screen', 'count': int(row.pre_screened)},
+            {'stage': 'enrichment', 'count': enriched},
+            {'stage': 'analysis',   'count': enriched},
+            {'stage': 'scoring',    'count': int(row.scored)},
+            {'stage': 'crm_sync',   'count': int(row.synced)},
+        ]
         return jsonify(result)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
