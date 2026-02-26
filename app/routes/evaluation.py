@@ -3,10 +3,12 @@ Evaluation blueprint — analytics dashboard + API endpoints + benchmarks.
 
 Queries the database for pipeline performance metrics.
 """
+from dataclasses import asdict
 from datetime import datetime, timedelta
 from flask import Blueprint, render_template, jsonify, request
 
 from app.database import get_session
+from app.services.benchmarks import get_baseline, compute_deviations
 
 bp = Blueprint('evaluation', __name__)
 
@@ -271,14 +273,70 @@ def api_trends():
         else:
             total_found = total_scored = total_synced = 0
 
+        # Fetch baseline from MetricSnapshot for reference line
+        baseline = get_baseline(platform) if platform else None
+
         return jsonify({
             'daily': result,
             'rolling_avg': {
                 'avg_found': round(total_found),
                 'avg_scored': round(total_scored),
                 'avg_synced': round(total_synced),
-            }
+            },
+            'baseline': baseline,
         })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
+
+
+# ── API: Benchmarks ──────────────────────────────────────────────────────────
+
+@bp.route('/api/evaluation/benchmarks')
+def api_benchmarks():
+    """Per-platform baselines + deviations from the last 5 completed runs."""
+    platform = request.args.get('platform')
+
+    session = get_session()
+    try:
+        from app.models.db_run import DbRun
+
+        # Get platforms to report on
+        if platform:
+            platforms = [platform]
+        else:
+            rows = session.query(DbRun.platform).filter(
+                DbRun.status == 'completed'
+            ).distinct().all()
+            platforms = [r.platform for r in rows]
+
+        result = {}
+        for plat in platforms:
+            baseline = get_baseline(plat)
+
+            # Get last 5 completed runs for deviation analysis
+            recent_runs = session.query(DbRun).filter(
+                DbRun.status == 'completed',
+                DbRun.platform == plat,
+            ).order_by(DbRun.created_at.desc()).limit(5).all()
+
+            deviations = []
+            if baseline:
+                for run in recent_runs:
+                    devs = compute_deviations(run, baseline)
+                    for d in devs:
+                        deviations.append({
+                            'run_id': run.id,
+                            **asdict(d),
+                        })
+
+            result[plat] = {
+                'baseline': baseline,
+                'deviations': deviations,
+            }
+
+        return jsonify(result)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
     finally:

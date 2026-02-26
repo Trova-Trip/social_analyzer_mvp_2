@@ -92,6 +92,21 @@
         </div>
         <div class="px-5 pb-4 flex gap-4" id="benchmark-badges"></div>
     </div>
+
+    <!-- Benchmark Comparison -->
+    <div class="card" style="grid-column: 1 / -1;" id="benchmark-card">
+        <div class="flex items-center justify-between px-5 pt-4 pb-1">
+            <span class="section-label">Benchmark Comparison</span>
+            <select class="input-field" style="width:auto;padding:4px 10px;font-size:12px;" id="bench-platform">
+                <option value="">All platforms</option>
+                <option value="instagram">Instagram</option>
+                <option value="patreon">Patreon</option>
+                <option value="facebook">Facebook</option>
+            </select>
+        </div>
+        <div class="px-5 pb-2 pt-3" id="benchmark-metrics"></div>
+        <div class="px-5 pb-4" id="benchmark-deviations"></div>
+    </div>
 </div>
 {% endblock %}
 
@@ -365,10 +380,127 @@ async function loadTrends(platform) {
     if (rolling.avg_synced) {
         badges.innerHTML += `<span class="badge badge-success">30d avg synced: ${rolling.avg_synced}</span>`;
     }
+
+    // Baseline reference line on trends chart
+    const baseline = data.baseline;
+    if (baseline && baseline.avg_scored && trendsChart) {
+        const baselinePlugin = {
+            id: 'baselineLine',
+            afterDraw(chart) {
+                const yScale = chart.scales.y;
+                const y = yScale.getPixelForValue(baseline.avg_scored);
+                const ctx = chart.ctx;
+                ctx.save();
+                ctx.setLineDash([6, 4]);
+                ctx.strokeStyle = 'rgba(0,92,105,0.4)';
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.moveTo(chart.chartArea.left, y);
+                ctx.lineTo(chart.chartArea.right, y);
+                ctx.stroke();
+                // Label
+                ctx.fillStyle = 'rgba(0,92,105,0.5)';
+                ctx.font = '10px DM Sans, sans-serif';
+                ctx.fillText('30d baseline', chart.chartArea.right - 65, y - 5);
+                ctx.restore();
+            }
+        };
+        trendsChart.config.plugins = [baselinePlugin];
+        trendsChart.update();
+    }
 }
+
+/* ── Benchmarks ────────────────────────────────────── */
+async function loadBenchmarks(platform) {
+    const url = '/api/evaluation/benchmarks' + (platform ? '?platform=' + platform : '');
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data.error) return;
+
+    const metricsEl = document.getElementById('benchmark-metrics');
+    const devsEl = document.getElementById('benchmark-deviations');
+
+    // Find first platform with baseline data
+    const platforms = Object.keys(data);
+    if (platforms.length === 0) {
+        metricsEl.innerHTML = '<div class="text-xs py-4 text-center" style="color:#5a6779;opacity:0.5;">No benchmark data yet — need at least 3 days of snapshots</div>';
+        devsEl.innerHTML = '';
+        return;
+    }
+
+    // Render baseline metric cards
+    let cardsHtml = '<div class="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-3">';
+    const metricDefs = [
+        { key: 'yield_rate', label: 'Yield Rate', suffix: '%' },
+        { key: 'avg_found', label: 'Avg Found', suffix: '' },
+        { key: 'avg_scored', label: 'Avg Scored', suffix: '' },
+        { key: 'avg_synced', label: 'Avg Synced', suffix: '' },
+        { key: 'funnel_conversion', label: 'Conversion', suffix: '%' },
+    ];
+
+    let hasBaseline = false;
+    for (const plat of platforms) {
+        const bl = data[plat].baseline;
+        if (!bl) continue;
+        hasBaseline = true;
+        const platLabel = plat.charAt(0).toUpperCase() + plat.slice(1);
+        for (const m of metricDefs) {
+            const val = bl[m.key] || 0;
+            cardsHtml += `<div class="card kpi-card" style="border-top:2px solid #00b2c9;">
+                <div class="kpi-label">${m.label}</div>
+                <div class="kpi-value">${Math.round(val * 10) / 10}${m.suffix}</div>
+                <div class="kpi-sub">${bl.days}d avg · ${platLabel}</div>
+            </div>`;
+        }
+    }
+    cardsHtml += '</div>';
+
+    if (!hasBaseline) {
+        metricsEl.innerHTML = '<div class="text-xs py-4 text-center" style="color:#5a6779;opacity:0.5;">No benchmark data yet — need at least 3 days of snapshots</div>';
+        devsEl.innerHTML = '';
+        return;
+    }
+    metricsEl.innerHTML = cardsHtml;
+
+    // Render recent deviations list
+    let allDevs = [];
+    for (const plat of platforms) {
+        for (const d of (data[plat].deviations || [])) {
+            allDevs.push({ ...d, platform: plat });
+        }
+    }
+    allDevs = allDevs.slice(0, 10); // Show last 10
+
+    if (allDevs.length === 0) {
+        devsEl.innerHTML = '<div class="text-xs py-2" style="color:#5a6779;opacity:0.5;">No significant deviations detected in recent runs</div>';
+        return;
+    }
+
+    let devsHtml = '<div class="section-label mb-2">Recent Deviations</div><div class="space-y-1.5">';
+    for (const d of allDevs) {
+        const isGood = (d.direction === 'above' && d.metric !== 'avg_cost_per_lead') ||
+                       (d.direction === 'below' && d.metric === 'avg_cost_per_lead');
+        const color = isGood ? '#10b981' : '#f65c4e';
+        const bgColor = isGood ? '#d1fae5' : '#fee2e2';
+        const sevBadge = d.severity === 'significant'
+            ? `<span class="badge" style="background:${bgColor};color:${color};font-size:10px;">significant</span>`
+            : '';
+        devsHtml += `<div class="flex items-center gap-2 py-1.5 px-3 rounded" style="background:#f9fafb;">
+            <span class="text-xs font-medium" style="color:${color};">${Math.abs(d.pct_change)}% ${d.direction}</span>
+            <span class="text-xs" style="color:#3c4858;">${d.label}</span>
+            <span class="text-xs" style="color:#3c4858;opacity:0.4;">(run ${d.run_value} vs baseline ${d.baseline_value})</span>
+            ${sevBadge}
+        </div>`;
+    }
+    devsHtml += '</div>';
+    devsEl.innerHTML = devsHtml;
 
 document.getElementById('trends-platform').addEventListener('change', (e) => {
     loadTrends(e.target.value);
+});
+
+document.getElementById('bench-platform').addEventListener('change', (e) => {
+    loadBenchmarks(e.target.value);
 });
 
 /* ── Chart.js loader (works with HTMX boost navigation) ── */
@@ -389,6 +521,7 @@ async function initEvalCharts() {
     loadFunnel('');
     loadScoring();
     loadTrends('');
+    loadBenchmarks('');
 }
 
 if (document.readyState === 'loading') {

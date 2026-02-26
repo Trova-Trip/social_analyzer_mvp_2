@@ -400,6 +400,142 @@ class TestRunPipeline:
         assert "Budget limit" in fail_msg
         mock_notify_fail.assert_called_once_with(run)
 
+    @patch('app.pipeline.manager.notify_run_failed')
+    @patch('app.pipeline.manager.persist_run')
+    @patch('app.pipeline.manager.dedup_profiles', return_value=([
+        {'platform_username': 'u1'},
+    ], 0))
+    @patch('app.pipeline.manager.record_filter_history')
+    @patch('app.pipeline.manager.Run')
+    @patch('app.pipeline.manager.PIPELINE_STAGES', ['discovery', 'scoring'])
+    def test_budget_check_fires_on_first_stage(self, MockRun, mock_filter_hist,
+                                                mock_dedup, mock_persist, mock_notify_fail):
+        """Budget guardrail fires even when actual_cost is 0 (the bug fix).
+
+        Before the fix, the condition was `if max_budget and run.actual_cost > 0`,
+        which meant the guardrail never fired when actual_cost was 0.
+        """
+        from app.pipeline.manager import run_pipeline
+
+        # Discovery produces 1 profile with cost=0 (default).
+        # Before scoring: actual_cost=0, estimate_cost(1)=0.05, projected=0.05 > 0.005
+        # With the old bug (actual_cost > 0 check), this would NOT fire.
+        run = _make_run(
+            filters={'max_results': 10, 'max_budget': 0.005},
+            actual_cost=0.0,
+        )
+        MockRun.load.return_value = run
+
+        registry = {
+            'discovery': {'instagram': _DiscoveryAdapter},
+            'scoring': {'instagram': _CostlyAdapter},
+        }
+
+        with patch('app.pipeline.manager.STAGE_REGISTRY', registry):
+            run_pipeline('run-test-001')
+
+        run.fail.assert_called_once()
+        fail_msg = run.fail.call_args[0][0]
+        assert "Budget limit" in fail_msg
+
+    @patch('app.pipeline.manager.notify_run_failed')
+    @patch('app.pipeline.manager.persist_run')
+    @patch('app.pipeline.manager.dedup_profiles', return_value=([
+        {'platform_username': 'u1'},
+    ], 0))
+    @patch('app.pipeline.manager.record_filter_history')
+    @patch('app.pipeline.manager.Run')
+    @patch('app.pipeline.manager.PIPELINE_STAGES', ['discovery', 'scoring'])
+    def test_default_budget_from_config(self, MockRun, mock_filter_hist, mock_dedup,
+                                         mock_persist, mock_notify_fail):
+        """When no max_budget in filters, default is applied from cost config."""
+        from app.pipeline.manager import run_pipeline
+
+        # No max_budget in filters — default will be loaded from cost config
+        run = _make_run(
+            filters={'max_results': 10},
+            actual_cost=0.0,
+        )
+        MockRun.load.return_value = run
+
+        registry = {
+            'discovery': {'instagram': _DiscoveryAdapter},
+            'scoring': {'instagram': _CostlyAdapter},
+        }
+
+        # Patch default budget to $0.001 so the guardrail fires when scoring
+        # estimates cost for 1 profile: 1 * 0.05 = 0.05 > 0.001
+        with patch('app.pipeline.manager.STAGE_REGISTRY', registry), \
+             patch('app.pipeline.manager.get_default_budget', return_value=0.001):
+            run_pipeline('run-test-001')
+
+        # Should fail because default budget is tiny
+        run.fail.assert_called_once()
+        fail_msg = run.fail.call_args[0][0]
+        assert "Budget limit" in fail_msg
+
+    @patch('app.pipeline.manager.notify_run_complete')
+    @patch('app.pipeline.manager.persist_lead_results')
+    @patch('app.pipeline.manager.persist_run')
+    @patch('app.pipeline.manager.dedup_profiles', return_value=([
+        {'platform_username': 'u1'},
+    ], 0))
+    @patch('app.pipeline.manager.record_filter_history')
+    @patch('app.pipeline.manager.Run')
+    @patch('app.pipeline.manager.PIPELINE_STAGES', ['discovery', 'scoring'])
+    def test_warning_threshold_logs_but_continues(self, MockRun, mock_filter_hist, mock_dedup,
+                                                    mock_persist, mock_lead_results, mock_notify):
+        """Cost at 85% of budget logs a warning but pipeline continues."""
+        from app.pipeline.manager import run_pipeline
+
+        # Budget = 1.00, actual_cost starts at 0. Discovery adapter estimates
+        # 3 profiles * 0.05 = 0.15. That's 15% of budget — under warning.
+        # But scoring adapter estimates 1 * 0.05 = 0.05, and after discovery
+        # actual_cost accumulates 0.50. So 0.50 + 0.05 = 0.55 < 1.00, still safe.
+        # We need: projected > budget * 0.80 but projected <= budget.
+        # Set actual_cost to 0.78 at the time scoring runs, budget=1.00.
+        # scoring estimates 1 * 0.05 = 0.05, projected = 0.83 > 0.80 threshold.
+
+        run = _make_run(
+            filters={'max_results': 10, 'max_budget': 1.00},
+            actual_cost=0.0,  # starts at 0, discovery will add 0.50
+        )
+        MockRun.load.return_value = run
+
+        class _CostDiscovery(StageAdapter):
+            platform = 'instagram'
+            stage = 'discovery'
+            def run(self, profiles, run_obj):
+                return StageResult(
+                    profiles=[{'platform_username': 'u1'}],
+                    processed=1, cost=0.78,
+                )
+            def estimate_cost(self, count):
+                return 0.01  # low enough to pass
+
+        class _CostScoring(StageAdapter):
+            platform = 'instagram'
+            stage = 'scoring'
+            def run(self, profiles, run_obj):
+                return StageResult(profiles=profiles, processed=len(profiles), cost=0.05)
+            def estimate_cost(self, count):
+                return count * 0.05  # 0.78 + 0.05 = 0.83 > 0.80 but < 1.00
+
+        registry = {
+            'discovery': {'instagram': _CostDiscovery},
+            'scoring': {'instagram': _CostScoring},
+        }
+
+        with patch('app.pipeline.manager.STAGE_REGISTRY', registry):
+            run_pipeline('run-test-001')
+
+        # Pipeline should complete (not fail)
+        run.complete.assert_called_once()
+        # Warning should have been logged via add_error
+        warning_calls = [c for c in run.add_error.call_args_list
+                         if 'budget' in str(c).lower() or 'cost' in str(c).lower()]
+        assert len(warning_calls) >= 1
+
     @patch('app.pipeline.manager.notify_run_complete')
     @patch('app.pipeline.manager.persist_lead_results')
     @patch('app.pipeline.manager.persist_run')
@@ -769,6 +905,62 @@ class TestGenerateRunSummary:
 
         summary = _generate_run_summary(run)
         assert isinstance(summary, str)
+
+
+# ── _generate_run_summary — deviation notes ──────────────────────────────────
+
+class TestRunSummaryDeviations:
+    """Summary includes benchmark deviation notes when baseline exists."""
+
+    @patch('app.pipeline.manager.get_baseline')
+    @patch('app.pipeline.manager.compute_deviations')
+    def test_includes_deviation_lines(self, mock_devs, mock_baseline):
+        from app.pipeline.manager import _generate_run_summary
+        from app.services.benchmarks import Deviation
+
+        mock_baseline.return_value = {'avg_found': 100}
+        mock_devs.return_value = [
+            Deviation(metric='avg_found', label='Profiles Found',
+                      run_value=200, baseline_value=100,
+                      pct_change=100.0, severity='significant', direction='above'),
+        ]
+
+        run = _make_run(
+            profiles_found=200, profiles_pre_screened=150,
+            profiles_scored=100, contacts_synced=50,
+            tier_distribution={'auto_enroll': 5, 'high_priority_review': 10},
+            actual_cost=2.0,
+        )
+        summary = _generate_run_summary(run)
+        assert '100% above 30-day average' in summary
+        assert 'Profiles Found' in summary
+
+    @patch('app.pipeline.manager.get_baseline')
+    def test_no_deviation_when_no_baseline(self, mock_baseline):
+        from app.pipeline.manager import _generate_run_summary
+
+        mock_baseline.return_value = None
+
+        run = _make_run(
+            profiles_found=100, profiles_pre_screened=80,
+            profiles_scored=50, contacts_synced=30,
+        )
+        summary = _generate_run_summary(run)
+        assert '30-day average' not in summary
+
+    @patch('app.pipeline.manager.get_baseline')
+    def test_deviation_exception_does_not_crash_summary(self, mock_baseline):
+        from app.pipeline.manager import _generate_run_summary
+
+        mock_baseline.side_effect = Exception('db error')
+
+        run = _make_run(
+            profiles_found=100, profiles_pre_screened=80,
+            profiles_scored=50, contacts_synced=30,
+        )
+        summary = _generate_run_summary(run)
+        # Should still produce a valid summary despite the exception
+        assert 'Discovered' in summary
 
 
 # ── _estimate_total_cost ─────────────────────────────────────────────────────

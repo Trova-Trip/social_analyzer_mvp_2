@@ -5,8 +5,10 @@ import time
 from flask import Blueprint, request, jsonify, render_template, Response, stream_with_context
 
 from app.models.run import Run
-from app.pipeline.manager import launch_run, get_run_status, STAGE_REGISTRY
+from app.pipeline.manager import launch_run, get_run_status, STAGE_REGISTRY, _estimate_total_cost
 from app.pipeline.base import get_pipeline_info
+from app.pipeline.cost_config import get_default_budget, get_confirmation_threshold
+from app.services.benchmarks import get_baseline, compute_deviations
 from app.config import BDR_OWNER_IDS
 from app.routes.dashboard import PLATFORM_SVG
 
@@ -58,8 +60,20 @@ def run_detail(run_id):
     run_dict = run.to_dict()
     stages = _build_stages(run_dict)
     is_terminal = run_dict.get('status') in ('completed', 'failed')
+
+    # Compute benchmark deviations for completed runs
+    deviations = []
+    if run_dict.get('status') == 'completed':
+        try:
+            baseline = get_baseline(run_dict.get('platform', ''))
+            if baseline:
+                deviations = compute_deviations(run, baseline)
+        except Exception:
+            pass
+
     initial_html = render_template('partials/run_detail_content.html',
-                                   run=run_dict, stages=stages, is_terminal=is_terminal)
+                                   run=run_dict, stages=stages,
+                                   is_terminal=is_terminal, deviations=deviations)
     return render_template('run_detail.html', run=run_dict,
                            is_terminal=is_terminal, initial_html=initial_html)
 
@@ -241,6 +255,30 @@ def runs_table_partial():
         filtered_count=len(filtered),
         platform_svg=PLATFORM_SVG,
     )
+
+
+@bp.route('/api/cost-estimate', methods=['POST'])
+def cost_estimate():
+    """Return estimated cost, default budget, and whether confirmation is needed."""
+    try:
+        data = request.json or {}
+        platform = data.get('platform', 'instagram')
+        filters = data.get('filters', {})
+
+        if platform not in ('instagram', 'patreon', 'facebook'):
+            return jsonify({'error': f'Unsupported platform: {platform}'}), 400
+
+        estimated_cost = _estimate_total_cost(platform, filters)
+        default_budget = get_default_budget(platform)
+        confirmation_threshold = get_confirmation_threshold()
+
+        return jsonify({
+            'estimated_cost': round(estimated_cost, 2),
+            'default_budget': round(default_budget, 2),
+            'needs_confirmation': estimated_cost > confirmation_threshold,
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 @bp.route('/api/pipeline-info')

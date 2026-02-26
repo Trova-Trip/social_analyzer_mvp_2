@@ -19,6 +19,8 @@ from app.services.db import (
     dedup_profiles, record_filter_history,
 )
 from app.services.notifications import notify_run_complete, notify_run_failed
+from app.services.benchmarks import persist_metric_snapshot, get_baseline, compute_deviations
+from app.pipeline.cost_config import get_default_budget, get_warning_threshold
 
 # Import adapter registries from each stage module
 from app.pipeline import discovery as discovery_mod
@@ -172,9 +174,13 @@ def run_pipeline(run_id: str, retry_from_stage: str = None):
 
         # Cost guardrail: check max_budget before each stage
         max_budget = run.filters.get('max_budget')
-        if max_budget and run.actual_cost > 0:
+        if max_budget is None:
+            max_budget = get_default_budget(run.platform)
+        if max_budget:
             est = adapter.estimate_cost(len(profiles))
-            if run.actual_cost + est > max_budget:
+            projected = (run.actual_cost or 0) + est
+            # Hard stop: projected cost exceeds budget
+            if projected > max_budget:
                 print(f"[Pipeline] Budget exceeded: actual={run.actual_cost:.2f} + est={est:.2f} > max={max_budget:.2f}")
                 run.fail(f"Budget limit ${max_budget:.2f} would be exceeded (spent ${run.actual_cost:.2f}, next stage ~${est:.2f})")
                 run.summary = _generate_run_summary(run, failed=True)
@@ -182,6 +188,13 @@ def run_pipeline(run_id: str, retry_from_stage: str = None):
                 persist_run(run)
                 notify_run_failed(run)
                 return
+            # Warning threshold: log warning but continue
+            warning_ratio = get_warning_threshold(run.platform)
+            if projected > max_budget * warning_ratio:
+                pct = int(warning_ratio * 100)
+                msg = f"Cost at {pct}%+ of budget (${projected:.2f} / ${max_budget:.2f})"
+                print(f"[Pipeline] Warning: {msg}")
+                run.add_error(stage_name, msg)
 
         # Update run status
         status_map = {
@@ -263,6 +276,7 @@ def run_pipeline(run_id: str, retry_from_stage: str = None):
                 run.complete()
                 persist_run(run)
                 persist_lead_results(run, profiles)
+                persist_metric_snapshot(run)
                 notify_run_complete(run)
                 return
 
@@ -281,6 +295,7 @@ def run_pipeline(run_id: str, retry_from_stage: str = None):
     run.complete()
     persist_run(run)
     persist_lead_results(run, profiles)
+    persist_metric_snapshot(run)
     notify_run_complete(run)
     print(f"[Pipeline] Run {run_id} completed — "
           f"found={run.profiles_found}, scored={run.profiles_scored}, synced={run.contacts_synced}")
@@ -375,6 +390,16 @@ def _generate_run_summary(run, failed: bool = False) -> str:
 
     if warnings:
         lines.append('Warning: ' + ' '.join(warnings))
+
+    # Benchmark deviations
+    try:
+        baseline = get_baseline(run.platform)
+        if baseline:
+            devs = compute_deviations(run, baseline)
+            for d in devs:
+                lines.append(f"{d.label} {abs(d.pct_change):.0f}% {d.direction} 30-day average.")
+    except Exception:
+        pass
 
     return ' '.join(lines)
 

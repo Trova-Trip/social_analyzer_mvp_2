@@ -303,13 +303,54 @@ class TestApiTrends:
 # Integration
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# /api/evaluation/benchmarks
+# ---------------------------------------------------------------------------
+
+class TestApiBenchmarks:
+
+    def test_returns_200_with_no_data(self, client, patch_eval_session):
+        resp = client.get('/api/evaluation/benchmarks')
+        assert resp.status_code == 200
+
+    def test_returns_empty_dict_with_no_completed_runs(self, client, patch_eval_session):
+        resp = client.get('/api/evaluation/benchmarks')
+        assert resp.json == {}
+
+    def test_returns_per_platform_structure(self, client, seed_completed_runs):
+        resp = client.get('/api/evaluation/benchmarks')
+        assert resp.status_code == 200
+        data = resp.json
+        for plat in data:
+            assert 'baseline' in data[plat]
+            assert 'deviations' in data[plat]
+
+    def test_filters_by_platform(self, client, seed_completed_runs):
+        resp = client.get('/api/evaluation/benchmarks?platform=instagram')
+        assert resp.status_code == 200
+        data = resp.json
+        # Should only have instagram key
+        assert list(data.keys()) == ['instagram']
+
+    def test_deviations_are_list(self, client, seed_completed_runs):
+        resp = client.get('/api/evaluation/benchmarks')
+        data = resp.json
+        for plat in data:
+            assert isinstance(data[plat]['deviations'], list)
+
+
+# ---------------------------------------------------------------------------
+# Integration
+# ---------------------------------------------------------------------------
+
 class TestEvaluationIntegration:
 
     def test_all_endpoints_reachable(self, client, patch_eval_session):
         """All evaluation endpoints return 200 even with empty DB."""
         for url in ['/evaluation', '/partials/eval-kpis',
                     '/api/evaluation/channels', '/api/evaluation/funnel',
-                    '/api/evaluation/scoring', '/api/evaluation/trends']:
+                    '/api/evaluation/scoring', '/api/evaluation/trends',
+                    '/api/evaluation/benchmarks']:
             resp = client.get(url)
             assert resp.status_code == 200, f'{url} returned {resp.status_code}'
 
