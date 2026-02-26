@@ -178,7 +178,7 @@ class MockInstagramPrescreen(StageAdapter):
             else:
                 failed += 1
                 run.increment_stage_progress('pre_screen', 'failed')
-                print(f"[Mock Prescreen] FAIL @{profile.get('platform_username', '?')} — inactive")
+                print(f"[Mock Prescreen] FILTERED @{profile.get('platform_username', '?')} — inactive")
 
         return StageResult(
             profiles=passed,

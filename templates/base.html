@@ -295,7 +295,66 @@
             100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(0,178,201,0); }
         }
 
-        /* ── Mobile overlay ──────────────────────────────── */
+        /* ── Custom modal ──────────────────────────────────── */
+        .modal-backdrop {
+            display: none; position: fixed; inset: 0;
+            background: rgba(0,61,71,0.3);
+            backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+            z-index: 100;
+            align-items: center; justify-content: center;
+        }
+        .modal-backdrop.open { display: flex; }
+        .modal-panel {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 8px 40px rgba(0,61,71,0.16), 0 0 0 1px rgba(0,0,0,0.04);
+            width: 92%; max-width: 380px;
+            overflow: hidden;
+            animation: modal-in 0.15s ease-out;
+        }
+        @keyframes modal-in {
+            from { opacity: 0; transform: translateY(6px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        .modal-body {
+            padding: 20px 20px 16px;
+            border-left: 3px solid var(--modal-accent, #005c69);
+        }
+        .modal-title {
+            font-size: 14px; font-weight: 700; color: #005c69;
+            letter-spacing: -0.01em;
+        }
+        .modal-message {
+            font-size: 13px; color: #5a6779; line-height: 1.5;
+            margin-top: 4px;
+        }
+        .modal-actions {
+            display: flex; gap: 8px; justify-content: flex-end;
+            padding: 0 20px 16px;
+        }
+        .modal-btn {
+            font-size: 13px; font-weight: 600; font-family: inherit;
+            padding: 7px 16px; border-radius: 8px;
+            cursor: pointer; border: none;
+            transition: all 0.12s;
+        }
+        .modal-btn:focus-visible {
+            outline: 2px solid #00b2c9; outline-offset: 2px;
+        }
+        .modal-btn-secondary {
+            background: #f1f5f9; color: #64748b;
+        }
+        .modal-btn-secondary:hover { background: #e2e8f0; color: #3c4858; }
+        .modal-btn-primary {
+            background: #005c69; color: white;
+        }
+        .modal-btn-primary:hover { background: #004a54; }
+        .modal-btn-danger {
+            background: #f65c4e; color: white;
+        }
+        .modal-btn-danger:hover { background: #e04a3d; }
+
+        /* ── Mobile overlay ──────────────────────────────────── */
         .sidebar-overlay {
             display: none;
             position: fixed; inset: 0;
@@ -449,7 +508,95 @@
     };
 
     /* Sidebar badge is now HTMX-powered (hx-get on #sidebar-runs-badge) */
+
+    /* ── Custom modal API ────────────────────────────────── */
+    window._modalClose = null;
+
+    var MODAL_ACCENTS = {
+        info:    '#005c69',
+        error:   '#f65c4e',
+        warning: '#f59e0b',
+        confirm: '#00b2c9',
+    };
+
+    function _openModal(type, title, message, actions) {
+        var el = document.getElementById('app-modal');
+        var body = document.getElementById('modal-body');
+        body.style.setProperty('--modal-accent', MODAL_ACCENTS[type] || MODAL_ACCENTS.info);
+        document.getElementById('modal-title').textContent = title;
+        document.getElementById('modal-message').textContent = message;
+        document.getElementById('modal-actions').innerHTML = '';
+        actions.forEach(function(a) {
+            var btn = document.createElement('button');
+            btn.className = 'modal-btn ' + (a.cls || 'modal-btn-primary');
+            btn.textContent = a.label;
+            btn.onclick = a.onClick;
+            document.getElementById('modal-actions').appendChild(btn);
+        });
+        el.classList.add('open');
+        var primary = document.querySelector('#modal-actions .modal-btn-primary, #modal-actions .modal-btn-danger');
+        if (primary) setTimeout(function() { primary.focus(); }, 50);
+    }
+
+    function _closeModal() {
+        document.getElementById('app-modal').classList.remove('open');
+        window._modalClose = null;
+    }
+
+    /**
+     * showModal(message, opts) — replaces alert()
+     * opts: { title, type: 'info'|'error'|'warning', buttonLabel }
+     */
+    window.showModal = function(message, opts) {
+        opts = opts || {};
+        var type = opts.type || 'info';
+        var title = opts.title || (type === 'error' ? 'Error' : 'Notice');
+        window._modalClose = _closeModal;
+        _openModal(type, title, message, [
+            { label: opts.buttonLabel || 'OK', cls: 'modal-btn-primary', onClick: _closeModal },
+        ]);
+    };
+
+    /**
+     * showConfirm(message, opts) — replaces confirm(), returns a Promise<boolean>
+     * opts: { title, type: 'confirm'|'warning', confirmLabel, cancelLabel }
+     */
+    window.showConfirm = function(message, opts) {
+        opts = opts || {};
+        return new Promise(function(resolve) {
+            var type = opts.type || 'confirm';
+            var title = opts.title || 'Confirm';
+            var confirmCls = type === 'warning' ? 'modal-btn-danger' : 'modal-btn-primary';
+
+            function done(val) {
+                _closeModal();
+                resolve(val);
+            }
+
+            window._modalClose = function() { done(false); };
+            _openModal(type, title, message, [
+                { label: opts.cancelLabel || 'Cancel', cls: 'modal-btn-secondary', onClick: function() { done(false); } },
+                { label: opts.confirmLabel || 'Confirm', cls: confirmCls, onClick: function() { done(true); } },
+            ]);
+        });
+    };
+
+    /* Close modal on Escape */
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && window._modalClose) window._modalClose();
+    });
 </script>
+<!-- Custom modal -->
+<div class="modal-backdrop" id="app-modal" onclick="if(event.target===this)window._modalClose&&window._modalClose()">
+    <div class="modal-panel">
+        <div class="modal-body" id="modal-body">
+            <div class="modal-title" id="modal-title"></div>
+            <div class="modal-message" id="modal-message"></div>
+        </div>
+        <div class="modal-actions" id="modal-actions"></div>
+    </div>
+</div>
+
 <script src="https://unpkg.com/htmx.org@2.0.4"></script>
 <script src="https://unpkg.com/htmx-ext-sse@2.2.2/sse.js"></script>
 <script src="https://unpkg.com/idiomorph@0.3.0/dist/idiomorph-ext.min.js"></script>

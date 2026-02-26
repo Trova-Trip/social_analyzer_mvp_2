@@ -592,7 +592,7 @@ document.getElementById('discovery-form').addEventListener('submit', async funct
 
     const bdrNames = getBdrNames();
     if (bdrNames.length === 0) {
-        alert('Select at least one BDR');
+        showModal('Select at least one BDR', {type: 'warning', title: 'Missing BDR'});
         return;
     }
 
@@ -616,12 +616,12 @@ document.getElementById('discovery-form').addEventListener('submit', async funct
         if (res.ok && data.id) {
             window.location.href = `/runs/${data.id}`;
         } else {
-            alert('Error: ' + (data.error || 'Unknown error'));
+            showModal(data.error || 'Unknown error', {type: 'error'});
             btn.disabled = false;
             btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="5" stroke="currentColor" stroke-width="1.5"/><path d="M14.5 14.5L10.5 10.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg> Launch Discovery Run';
         }
     } catch (err) {
-        alert('Error: ' + err.message);
+        showModal(err.message, {type: 'error'});
         btn.disabled = false;
         btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="5" stroke="currentColor" stroke-width="1.5"/><path d="M14.5 14.5L10.5 10.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg> Launch Discovery Run';
     }
@@ -637,14 +637,14 @@ function buildFilters() {
             max: parseInt(document.getElementById('max-followers').value),
         };
         if (filters.follower_count.min >= filters.follower_count.max) {
-            alert('Min followers must be less than max');
+            showModal('Min followers must be less than max', {type: 'warning', title: 'Invalid range'});
             return null;
         }
 
         const lt = document.querySelector('input[name="lookalike-type"]:checked').value;
         const lu = document.getElementById('lookalike-username').value.trim();
         if (lt !== 'none') {
-            if (!lu) { alert('Enter a username for lookalike search'); return null; }
+            if (!lu) { showModal('Enter a username for lookalike search', {type: 'warning', title: 'Missing username'}); return null; }
             filters.lookalike_type = lt;
             filters.lookalike_username = lu;
         }
@@ -665,7 +665,7 @@ function buildFilters() {
 
     } else if (selectedPlatform === 'patreon') {
         const kw = getTagValues('patreon-keyword-wrapper');
-        if (!kw.length) { alert('Enter at least one search keyword'); return null; }
+        if (!kw.length) { showModal('Enter at least one search keyword', {type: 'warning', title: 'Missing keywords'}); return null; }
         filters.search_keywords = kw;
         filters.max_results = parseInt(document.getElementById('patreon-max-results').value);
 
@@ -676,14 +676,14 @@ function buildFilters() {
         const maxP = parseInt(document.getElementById('patreon-max-patrons').value) || 0;
         if (minP > 0) filters.min_patrons = minP;
         if (maxP > 0) filters.max_patrons = maxP;
-        if (minP > 0 && maxP > 0 && minP >= maxP) { alert('Min patrons must be less than max'); return null; }
+        if (minP > 0 && maxP > 0 && minP >= maxP) { showModal('Min patrons must be less than max', {type: 'warning', title: 'Invalid range'}); return null; }
 
         const minPosts = parseInt(document.getElementById('patreon-min-posts').value) || 0;
         if (minPosts > 0) filters.min_posts = minPosts;
 
     } else if (selectedPlatform === 'facebook') {
         const kw = getTagValues('facebook-keyword-wrapper');
-        if (!kw.length) { alert('Enter at least one search keyword'); return null; }
+        if (!kw.length) { showModal('Enter at least one search keyword', {type: 'warning', title: 'Missing keywords'}); return null; }
         filters.keywords = kw;
         filters.max_results = parseInt(document.getElementById('facebook-max-results').value);
 
@@ -691,7 +691,7 @@ function buildFilters() {
         const maxM = parseInt(document.getElementById('facebook-max-members').value) || 0;
         if (minM > 0) filters.min_members = minM;
         if (maxM > 0) filters.max_members = maxM;
-        if (minM > 0 && maxM > 0 && minM >= maxM) { alert('Min members must be less than max'); return null; }
+        if (minM > 0 && maxM > 0 && minM >= maxM) { showModal('Min members must be less than max', {type: 'warning', title: 'Invalid range'}); return null; }
 
         const vis = document.getElementById('facebook-visibility').value;
         if (vis !== 'all') filters.visibility = vis;
@@ -762,8 +762,8 @@ async function savePreset() {
             body: JSON.stringify({name, platform: selectedPlatform, filters}),
         });
         if (res.ok) loadPresets();
-        else alert('Failed to save preset');
-    } catch(e) { alert('Error: ' + e.message); }
+        else showModal('Failed to save preset', {type: 'error'});
+    } catch(e) { showModal(e.message, {type: 'error'}); }
 }
 
 // Load presets on init + platform switch
