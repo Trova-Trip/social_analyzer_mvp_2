@@ -167,7 +167,10 @@ def keyword_suggestions():
     user_input = "Current keywords: " + ", ".join(keywords)
 
     try:
-        response = anthropic_client.messages.create(
+        from app.services.circuit_breaker import get_breaker
+        cb = get_breaker('anthropic')
+        response = cb.call(
+            anthropic_client.messages.create,
             model="claude-haiku-4-5-20251001",
             max_tokens=256,
             system=system_prompt,

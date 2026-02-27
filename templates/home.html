@@ -70,6 +70,17 @@
     </a>
 </div>
 
+<!-- API Health (HTMX-powered) -->
+<div class="animate-in mb-6" style="animation-delay:0.1s;">
+    <h2 class="section-label mb-3">API Health</h2>
+    <div id="api-health-panel"
+         hx-get="/partials/api-health"
+         hx-trigger="load, every 30s"
+         hx-swap="innerHTML">
+        <div class="card p-3 text-center text-xs" style="color:#3c4858;opacity:0.3;">Loading...</div>
+    </div>
+</div>
+
 <!-- Recent runs (HTMX-powered) -->
 <div class="animate-in" style="animation-delay:0.12s;">
     <div class="flex items-center justify-between mb-3">
@@ -83,4 +94,16 @@
         <div class="text-center py-8 text-xs" style="color:#3c4858;opacity:0.3;">Loading...</div>
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function resetCircuit(name) {
+    try {
+        const res = await fetch('/api/health/' + name + '/reset', {method: 'POST'});
+        if (res.ok) htmx.ajax('GET', '/partials/api-health', {target: '#api-health-panel', swap: 'innerHTML'});
+        else showModal('Failed to reset circuit breaker', {type: 'error'});
+    } catch(e) { showModal(e.message, {type: 'error'}); }
+}
+</script>
 {% endblock %}

@@ -172,6 +172,15 @@ def sidebar_badge_partial():
     return render_template('partials/sidebar_badge.html', active=active)
 
 
+@bp.route('/partials/api-health')
+def api_health_partial():
+    """HTMX partial: API health status cards."""
+    from app.services.circuit_breaker import get_all_breakers
+    breakers = get_all_breakers()
+    services = [cb.get_health() for cb in breakers.values()]
+    return render_template('partials/api_health.html', services=services)
+
+
 @bp.route('/api/stats/reset', methods=['POST'])
 def reset_stats():
     """Reset dashboard stats (useful for starting a new batch)."""

@@ -14,10 +14,17 @@ from app.extensions import openai_client as client
 logger = logging.getLogger('services.openai')
 
 
+def _chat_completion(**kwargs):
+    """Route chat completion through the OpenAI circuit breaker."""
+    from app.services.circuit_breaker import get_breaker
+    cb = get_breaker('openai')
+    return cb.call(client.chat.completions.create, **kwargs)
+
+
 def analyze_content_item(media_url: str, media_format: str) -> Dict[str, Any]:
     """Analyze a single content item — focus on POV, authenticity, vulnerability, engagement."""
     if media_format == 'IMAGE':
-        response = client.chat.completions.create(
+        response = _chat_completion(
             model="gpt-4o",
             messages=[{
                 "role": "user",
@@ -55,7 +62,7 @@ Respond in JSON:
 
     else:  # VIDEO
         transcript = transcribe_video_with_whisper(media_url)
-        response = client.chat.completions.create(
+        response = _chat_completion(
             model="gpt-4o",
             messages=[{
                 "role": "user",
@@ -131,7 +138,7 @@ def analyze_bio_evidence(bio: str) -> Dict[str, Any]:
             "monetization": {"evidence_found": False, "types": [], "confidence": 0.0},
         }
 
-    response = client.chat.completions.create(
+    response = _chat_completion(
         model="gpt-4o",
         messages=[{
             "role": "user",
@@ -190,7 +197,7 @@ def analyze_caption_evidence(captions: List[str]) -> Dict[str, Any]:
     truncated_captions = [cap[:500] if cap else "" for cap in captions]
     captions_text = "\n\n---\n\n".join([f"CAPTION {i+1}: {cap}" for i, cap in enumerate(truncated_captions) if cap])
 
-    response = client.chat.completions.create(
+    response = _chat_completion(
         model="gpt-4o",
         messages=[{
             "role": "user",
@@ -248,7 +255,7 @@ def generate_creator_profile(content_analyses: List[Dict[str, Any]]) -> Dict[str
 
     combined = "\n\n".join(summaries)
 
-    response = client.chat.completions.create(
+    response = _chat_completion(
         model="gpt-4o",
         messages=[{
             "role": "system",
@@ -339,7 +346,7 @@ Rules:
 Return ONLY the name(s). No quotes, no explanation."""
 
     try:
-        response = client.chat.completions.create(
+        response = _chat_completion(
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": "You are a precise data extraction assistant. Return only the requested format with no additional text."},

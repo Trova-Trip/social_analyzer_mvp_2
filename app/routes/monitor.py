@@ -288,3 +288,28 @@ def pipeline_info():
     Response shape: { "instagram": { "discovery": { "description": "...", "apis": [...], "est": null }, ... }, ... }
     """
     return jsonify(get_pipeline_info(STAGE_REGISTRY))
+
+
+# ── API Health ────────────────────────────────────────────────────────────────
+
+@bp.route('/api/health')
+def api_health():
+    """Return circuit breaker state and health metrics for all external services."""
+    from app.services.circuit_breaker import get_all_breakers
+    breakers = get_all_breakers()
+    services = {}
+    for name, cb in breakers.items():
+        services[name] = cb.get_health()
+    return jsonify({'services': services})
+
+
+@bp.route('/api/health/<service_name>/reset', methods=['POST'])
+def reset_circuit(service_name):
+    """Manually reset a circuit breaker to closed state."""
+    from app.services.circuit_breaker import get_all_breakers
+    breakers = get_all_breakers()
+    cb = breakers.get(service_name)
+    if not cb:
+        return jsonify({'error': f'Unknown service: {service_name}'}), 404
+    cb.reset()
+    return jsonify({'ok': True, 'state': cb.state})

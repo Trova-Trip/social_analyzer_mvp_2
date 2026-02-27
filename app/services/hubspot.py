@@ -134,7 +134,9 @@ def send_to_hubspot(
     if error_details:
         logger.warning("Error details: %s", '; '.join(error_details))
 
-    response = requests.post(HUBSPOT_WEBHOOK_URL, json=payload, timeout=10)
+    from app.services.circuit_breaker import get_breaker
+    cb = get_breaker('hubspot')
+    response = cb.call(requests.post, HUBSPOT_WEBHOOK_URL, json=payload, timeout=10)
     logger.info("HubSpot response: %d", response.status_code)
 
 
@@ -162,7 +164,10 @@ def import_profiles_to_hubspot(profiles: List[Dict], job_id: str) -> Dict:
         batch_num = (i // 100) + 1
 
         try:
-            resp = requests.post(
+            from app.services.circuit_breaker import get_breaker
+            cb = get_breaker('hubspot')
+            resp = cb.call(
+                requests.post,
                 f"{HUBSPOT_API_URL}/crm/v3/objects/contacts/batch/create",
                 headers={
                     'Authorization': f'Bearer {HUBSPOT_API_KEY}',

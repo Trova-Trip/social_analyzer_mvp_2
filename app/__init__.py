@@ -58,6 +58,11 @@ def create_app():
     app.register_blueprint(monitor_bp)
     app.register_blueprint(evaluation_bp)
 
+    # Initialize circuit breakers for external API services
+    from app.extensions import redis_client
+    from app.services.circuit_breaker import init_breakers
+    init_breakers(redis_client)
+
     # Import models so Base.metadata knows about them (required for SQLAlchemy).
     # Schema is managed by Alembic — no init_db() call.
     import importlib

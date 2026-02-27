@@ -17,39 +17,45 @@ logger = logging.getLogger('services.insightiq')
 
 
 def fetch_social_content(profile_url: str) -> Dict[str, Any]:
-    """Fetch content from InsightIQ API."""
-    url = f"{INSIGHTIQ_API_URL}/v1/social/creators/contents/fetch"
+    """Fetch content from InsightIQ API (circuit-breaker protected)."""
+    from app.services.circuit_breaker import get_breaker
+    cb = get_breaker('insightiq')
 
-    credentials = f"{INSIGHTIQ_USERNAME}:{INSIGHTIQ_PASSWORD}"
-    encoded_credentials = base64.b64encode(credentials.encode('utf-8')).decode('utf-8')
+    def _fetch():
+        url = f"{INSIGHTIQ_API_URL}/v1/social/creators/contents/fetch"
 
-    headers = {
-        "Authorization": f"Basic {encoded_credentials}",
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-    }
-    payload = {
-        "profile_url": profile_url,
-        "work_platform_id": INSIGHTIQ_WORK_PLATFORM_ID,
-    }
+        credentials = f"{INSIGHTIQ_USERNAME}:{INSIGHTIQ_PASSWORD}"
+        encoded_credentials = base64.b64encode(credentials.encode('utf-8')).decode('utf-8')
 
-    logger.debug("Request URL: %s", url)
-    logger.debug("Profile URL: %s", profile_url)
-    logger.debug("Work Platform ID: %s", INSIGHTIQ_WORK_PLATFORM_ID)
+        headers = {
+            "Authorization": f"Basic {encoded_credentials}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
+        payload = {
+            "profile_url": profile_url,
+            "work_platform_id": INSIGHTIQ_WORK_PLATFORM_ID,
+        }
 
-    try:
-        response = requests.post(url, json=payload, headers=headers, timeout=30)
-        logger.debug("Response status: %d", response.status_code)
-        if response.status_code != 200:
-            logger.error("Response body: %s", response.text)
-        response.raise_for_status()
-        return response.json()
-    except requests.exceptions.RequestException as e:
-        logger.error("API error: %s", e)
-        if hasattr(e, 'response') and e.response is not None:
-            logger.debug("Response status: %d", e.response.status_code)
-            logger.debug("Response body: %s", e.response.text)
-        raise
+        logger.debug("Request URL: %s", url)
+        logger.debug("Profile URL: %s", profile_url)
+        logger.debug("Work Platform ID: %s", INSIGHTIQ_WORK_PLATFORM_ID)
+
+        try:
+            response = requests.post(url, json=payload, headers=headers, timeout=30)
+            logger.debug("Response status: %d", response.status_code)
+            if response.status_code != 200:
+                logger.error("Response body: %s", response.text)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            logger.error("API error: %s", e)
+            if hasattr(e, 'response') and e.response is not None:
+                logger.debug("Response status: %d", e.response.status_code)
+                logger.debug("Response body: %s", e.response.text)
+            raise
+
+    return cb.call(_fetch)
 
 
 def filter_content_items(content_items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -180,18 +186,24 @@ class InsightIQDiscovery:
         return self._standardize_results(raw_results, platform)
 
     def _start_job(self, parameters):
-        url = 'https://api.insightiq.ai/v1/social/creators/profiles/search-export'
-        try:
-            response = requests.post(url=url, headers=self.headers, json=parameters, timeout=30)
-            if response.status_code not in (200, 202):
-                raise Exception(f"Failed to start job: {response.text}")
-            job_id = response.json().get('id')
-            if not job_id:
-                raise Exception("No job ID returned from API")
-            logger.info("Job started successfully: %s", job_id)
-            return job_id
-        except requests.exceptions.RequestException as e:
-            raise Exception(f"Failed to connect to InsightIQ API: {e}")
+        from app.services.circuit_breaker import get_breaker
+        cb = get_breaker('insightiq')
+
+        def _do_start():
+            url = 'https://api.insightiq.ai/v1/social/creators/profiles/search-export'
+            try:
+                response = requests.post(url=url, headers=self.headers, json=parameters, timeout=30)
+                if response.status_code not in (200, 202):
+                    raise Exception(f"Failed to start job: {response.text}")
+                job_id = response.json().get('id')
+                if not job_id:
+                    raise Exception("No job ID returned from API")
+                logger.info("Job started successfully: %s", job_id)
+                return job_id
+            except requests.exceptions.RequestException as e:
+                raise Exception(f"Failed to connect to InsightIQ API: {e}")
+
+        return cb.call(_do_start)
 
     def _fetch_results(self, job_id):
         url = f'https://api.insightiq.ai/v1/social/creators/profiles/search-export/{job_id}'

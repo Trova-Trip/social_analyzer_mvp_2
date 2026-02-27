@@ -24,6 +24,13 @@ from app.config import (
 from app.extensions import redis_client, r2_client
 
 
+def _run_apify_actor(apify_client, actor_id, run_input, timeout_secs):
+    """Run an Apify actor through the circuit breaker."""
+    from app.services.circuit_breaker import get_breaker
+    cb = get_breaker('apify')
+    return cb.call(apify_client.actor(actor_id).call, run_input=run_input, timeout_secs=timeout_secs)
+
+
 # ============================================================================
 # APOLLO.IO ENRICHMENT CLIENT
 # ============================================================================
@@ -128,7 +135,10 @@ class ApolloEnrichment:
 
     def _call_match(self, name=None, first_name=None, last_name=None,
                     domain=None, org_name=None, linkedin_url=None) -> Optional[Dict]:
-        """Single Apollo /people/match call."""
+        """Single Apollo /people/match call (circuit-breaker protected)."""
+        from app.services.circuit_breaker import get_breaker
+        cb = get_breaker('apollo')
+
         data: Dict = {'reveal_personal_emails': True}
         if name:        data['name']              = name
         if first_name:  data['first_name']        = first_name
@@ -138,7 +148,8 @@ class ApolloEnrichment:
         if linkedin_url: data['linkedin_url']     = linkedin_url
 
         try:
-            resp = requests.post(
+            resp = cb.call(
+                requests.post,
                 f"{self.BASE_URL}/people/match",
                 headers={
                     'Content-Type':  'application/json',
@@ -495,7 +506,7 @@ async function pageFunction(context) {
             'requestTimeoutSecs': 30,
             'pageFunction':       PAGE_FUNCTION,
         }
-        run = apify.actor("apify~cheerio-scraper").call(run_input=run_input, timeout_secs=120)
+        run = _run_apify_actor(apify, "apify~cheerio-scraper", run_input, 120)
         items = list(apify.dataset(run["defaultDatasetId"]).iterate_items())
 
         results: Dict[str, Dict] = {}
@@ -571,7 +582,7 @@ async function pageFunction(context) {
         if globs:
             run_input['globs'] = globs[:200]  # Apify cap
 
-        run = apify.actor("apify~cheerio-scraper").call(run_input=run_input, timeout_secs=300)
+        run = _run_apify_actor(apify, "apify~cheerio-scraper", run_input, 300)
         items = list(apify.dataset(run["defaultDatasetId"]).iterate_items())
 
         # Aggregate raw emails by domain
@@ -693,9 +704,7 @@ async function pageFunction(context) {
             try:
                 from apify_client import ApifyClient
                 apify = ApifyClient(self.apify_token)
-                run = apify.actor("apify~google-search-scraper").call(
-                    run_input=actor_input, timeout_secs=120
-                )
+                run = _run_apify_actor(apify, "apify~google-search-scraper", actor_input, 120)
                 raw = list(apify.dataset(run["defaultDatasetId"]).iterate_items())
                 all_results.extend(raw or [])
             except Exception as e:
@@ -850,7 +859,7 @@ async function pageFunction(context) {
                 'requestTimeoutSecs': 90,
                 'pageFunction':       PAGE_FUNCTION,
             }
-            run   = apify.actor("apify~cheerio-scraper").call(run_input=run_input, timeout_secs=300)
+            run   = _run_apify_actor(apify, "apify~cheerio-scraper", run_input, 300)
             items = list(apify.dataset(run["defaultDatasetId"]).iterate_items())
         except Exception as e:
             logger.error("YouTube about Apify error: %s", e)
@@ -969,9 +978,7 @@ async function pageFunction(context) {
                 'usernames':    list(handle_to_idxs.keys()),
                 'resultsLimit': 1,
             }
-            run   = apify.actor("apify~instagram-profile-scraper").call(
-                run_input=run_input, timeout_secs=300
-            )
+            run   = _run_apify_actor(apify, "apify~instagram-profile-scraper", run_input, 300)
             items = list(apify.dataset(run["defaultDatasetId"]).iterate_items())
         except Exception as e:
             logger.error("IG bio Apify error: %s", e)
@@ -1086,9 +1093,7 @@ async function pageFunction(context) {
             run_input = {
                 'handles': list(handle_to_idxs.keys()),
             }
-            run   = apify.actor("apidojo~twitter-user-scraper").call(
-                run_input=run_input, timeout_secs=300
-            )
+            run   = _run_apify_actor(apify, "apidojo~twitter-user-scraper", run_input, 300)
             items = list(apify.dataset(run["defaultDatasetId"]).iterate_items())
         except Exception as e:
             logger.error("Twitter bio Apify error: %s", e)
@@ -1242,7 +1247,7 @@ async function pageFunction(context) {
                 'requestTimeoutSecs': 30,
                 'pageFunction':       PAGE_FUNCTION,
             }
-            run   = apify.actor("apify~cheerio-scraper").call(run_input=run_input, timeout_secs=180)
+            run   = _run_apify_actor(apify, "apify~cheerio-scraper", run_input, 180)
             items = list(apify.dataset(run["defaultDatasetId"]).iterate_items())
         except Exception as e:
             logger.error("RSS Apify error: %s", e)
@@ -1360,9 +1365,7 @@ async function pageFunction(context) {
             try:
                 from apify_client import ApifyClient
                 apify = ApifyClient(self.apify_token)
-                run = apify.actor("apify~google-search-scraper").call(
-                    run_input=actor_input, timeout_secs=120
-                )
+                run = _run_apify_actor(apify, "apify~google-search-scraper", actor_input, 120)
                 raw = list(apify.dataset(run["defaultDatasetId"]).iterate_items())
                 all_results.extend(raw or [])
             except Exception as e:
@@ -1749,9 +1752,7 @@ def enrich_with_leads_finder(profiles: List[Dict], job_id: str) -> List[Dict]:
             'email_status':   ['validated'],
             'fetch_count':    min(len(domains) * 5, 200),
         }
-        run = apify.actor("code_crafter~leads-finder").call(
-            run_input=run_input, timeout_secs=120
-        )
+        run = _run_apify_actor(apify, "code_crafter~leads-finder", run_input, 120)
         items = list(apify.dataset(run["defaultDatasetId"]).iterate_items())
         logger.info("Leads finder got %d results", len(items))
 
