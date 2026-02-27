@@ -8,23 +8,29 @@ import requests
 from typing import Dict, List, Any
 
 from app.config import (
-    INSIGHTIQ_USERNAME, INSIGHTIQ_PASSWORD,
-    INSIGHTIQ_WORK_PLATFORM_ID, INSIGHTIQ_API_URL,
+    INSIGHTIQ_API_URL,
     INSIGHTIQ_CLIENT_ID, INSIGHTIQ_SECRET,
 )
 
 logger = logging.getLogger('services.insightiq')
 
 
-def fetch_social_content(profile_url: str) -> Dict[str, Any]:
-    """Fetch content from InsightIQ API (circuit-breaker protected)."""
+def fetch_social_content(profile_url: str, platform: str = 'instagram') -> Dict[str, Any]:
+    """Fetch content from InsightIQ API (circuit-breaker protected).
+
+    Uses the same CLIENT_ID:SECRET credentials as discovery.
+    """
     from app.services.circuit_breaker import get_breaker
     cb = get_breaker('insightiq')
+
+    platform_id = InsightIQDiscovery.PLATFORM_CONFIGS.get(platform, {}).get(
+        'work_platform_id', '9bb8913b-ddd9-430b-a66a-d74d846e6c66'
+    )
 
     def _fetch():
         url = f"{INSIGHTIQ_API_URL}/v1/social/creators/contents/fetch"
 
-        credentials = f"{INSIGHTIQ_USERNAME}:{INSIGHTIQ_PASSWORD}"
+        credentials = f"{INSIGHTIQ_CLIENT_ID}:{INSIGHTIQ_SECRET}"
         encoded_credentials = base64.b64encode(credentials.encode('utf-8')).decode('utf-8')
 
         headers = {
@@ -34,12 +40,12 @@ def fetch_social_content(profile_url: str) -> Dict[str, Any]:
         }
         payload = {
             "profile_url": profile_url,
-            "work_platform_id": INSIGHTIQ_WORK_PLATFORM_ID,
+            "work_platform_id": platform_id,
         }
 
         logger.debug("Request URL: %s", url)
         logger.debug("Profile URL: %s", profile_url)
-        logger.debug("Work Platform ID: %s", INSIGHTIQ_WORK_PLATFORM_ID)
+        logger.debug("Work Platform ID: %s", platform_id)
 
         try:
             response = requests.post(url, json=payload, headers=headers, timeout=30)

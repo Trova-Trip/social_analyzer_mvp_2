@@ -15,10 +15,7 @@ REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
 DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///local.db')
 
 # ── InsightIQ ─────────────────────────────────────────────────────────────────
-INSIGHTIQ_USERNAME = os.getenv('INSIGHTIQ_USERNAME')
-INSIGHTIQ_PASSWORD = os.getenv('INSIGHTIQ_PASSWORD')
-INSIGHTIQ_WORK_PLATFORM_ID = os.getenv('INSIGHTIQ_WORK_PLATFORM_ID')
-INSIGHTIQ_API_URL = os.getenv('INSIGHTIQ_API_URL', 'https://api.staging.insightiq.ai')
+INSIGHTIQ_API_URL = os.getenv('INSIGHTIQ_API_URL', 'https://api.insightiq.ai')
 INSIGHTIQ_CLIENT_ID = os.getenv('INSIGHTIQ_CLIENT_ID')
 INSIGHTIQ_SECRET = os.getenv('INSIGHTIQ_SECRET')
 
