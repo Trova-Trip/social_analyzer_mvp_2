@@ -216,7 +216,18 @@
                     </div>
                     <div class="text-xs mt-0.5" style="color:#3c4858;opacity:0.45;">{{ def.sub }}</div>
                     {% set progress = run.get('stage_progress', {}).get(stage.key) if run.get('stage_progress') else None %}
-                    {% if progress and (progress.get('completed', 0) > 0 or progress.get('total', 0) > 0) %}
+                    {% if stage.key == 'pre_screen' and (run.profiles_pre_screened or run.profiles_found) %}
+                    {# Pre-screen: show passed vs filtered instead of raw completed/total #}
+                    {% set ps_passed = run.profiles_pre_screened or 0 %}
+                    {% set ps_found = run.profiles_found or 0 %}
+                    {% set ps_filtered = ps_found - ps_passed if ps_found > ps_passed else 0 %}
+                    <div class="flex flex-wrap gap-1 mt-1.5">
+                        <span class="badge badge-muted">{{ ps_passed }} passed</span>
+                        {% if ps_filtered > 0 %}
+                        <span class="badge" style="background:#fef3c7;color:#92400e;">{{ ps_filtered }} filtered</span>
+                        {% endif %}
+                    </div>
+                    {% elif progress and (progress.get('completed', 0) > 0 or progress.get('total', 0) > 0) %}
                     <div class="flex flex-wrap gap-1 mt-1.5">
                         {% if progress.get('total', 0) > 0 %}
                         <span class="badge badge-muted">{{ progress.completed }}/{{ progress.total }}</span>
@@ -224,7 +235,7 @@
                         <span class="badge badge-muted">{{ progress.completed }} found</span>
                         {% endif %}
                         {% if progress.get('failed', 0) > 0 %}
-                        <span class="badge badge-error">{{ progress.failed }} {{ 'filtered' if stage.key == 'pre_screen' else 'failed' }}</span>
+                        <span class="badge badge-error">{{ progress.failed }} failed</span>
                         {% endif %}
                     </div>
                     {% endif %}
