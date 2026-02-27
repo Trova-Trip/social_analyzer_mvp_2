@@ -169,6 +169,27 @@ class TestCheckPostFrequency:
         should_disqualify, reason = check_post_frequency(items)
         assert should_disqualify is False
 
+    def test_naive_timestamps_without_timezone_pass(self):
+        """Timestamps without timezone info (naive) should be treated as UTC and not crash."""
+        now = datetime.now(timezone.utc)
+        items = [
+            {'published_at': now.strftime('%Y-%m-%dT%H:%M:%S'), 'is_pinned': False},
+            {'published_at': (now - timedelta(days=5)).strftime('%Y-%m-%dT%H:%M:%S'), 'is_pinned': False},
+        ]
+        should_disqualify, reason = check_post_frequency(items)
+        assert should_disqualify is False
+
+    def test_mixed_naive_and_aware_timestamps_pass(self):
+        """Mix of naive and tz-aware timestamps should compare without error."""
+        now = datetime.now(timezone.utc)
+        items = [
+            {'published_at': now.strftime('%Y-%m-%dT%H:%M:%SZ'), 'is_pinned': False},
+            {'published_at': (now - timedelta(days=3)).strftime('%Y-%m-%dT%H:%M:%S'), 'is_pinned': False},
+            {'published_at': (now - timedelta(days=7)).isoformat(), 'is_pinned': False},
+        ]
+        should_disqualify, reason = check_post_frequency(items)
+        assert should_disqualify is False
+
 
 # ── create_profile_snapshot ───────────────────────────────────────────────────
 

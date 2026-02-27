@@ -38,6 +38,8 @@ def check_post_frequency(content_items: List[Dict[str, Any]]) -> Tuple[bool, str
             pub_date_str = item.get('published_at')
             if pub_date_str:
                 pub_date = datetime.fromisoformat(pub_date_str.replace('Z', '+00:00'))
+                if pub_date.tzinfo is None:
+                    pub_date = pub_date.replace(tzinfo=timezone.utc)
                 dates.append(pub_date)
 
         if not dates:
