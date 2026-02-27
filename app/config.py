@@ -28,6 +28,10 @@ OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 # ── Anthropic ─────────────────────────────────────────────────────────────────
 ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY')
 
+# ── Ollama (local LLM) ──────────────────────────────────────────────────────
+OLLAMA_URL = os.getenv('OLLAMA_URL', 'http://localhost:11434')
+OLLAMA_MODEL = os.getenv('OLLAMA_MODEL', 'gemma3:1b')
+
 # ── HubSpot ───────────────────────────────────────────────────────────────────
 HUBSPOT_WEBHOOK_URL = os.getenv('HUBSPOT_WEBHOOK_URL')
 HUBSPOT_API_KEY = os.getenv('HUBSPOT_API_KEY')

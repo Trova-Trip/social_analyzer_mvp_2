@@ -32,10 +32,10 @@
 </div>
 {% else %}
 <div id="run-detail-live"
-     hx-ext="sse, morph"
+     hx-ext="sse"
      sse-connect="/stream/run/{{ run.id }}"
      sse-swap="message"
-     hx-swap="morph:innerHTML">
+     hx-swap="innerHTML">
     {{ initial_html | safe }}
 </div>
 {% endif %}

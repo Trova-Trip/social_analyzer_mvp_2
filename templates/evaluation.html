@@ -36,33 +36,26 @@
      hx-get="/partials/eval-kpis" hx-trigger="load" hx-swap="innerHTML">
 </div>
 
-<!-- Charts -->
+<!-- Charts (coming soon) -->
 <div class="eval-grid animate-in" style="animation-delay:0.08s;">
 
     <!-- Channel Performance -->
     <div class="card" style="grid-column: 1 / -1;">
-        <div class="flex items-center justify-between px-5 pt-4 pb-1">
+        <div class="px-5 pt-4 pb-1">
             <span class="section-label">Channel Performance</span>
-            <span class="text-xs" style="color:#3c4858;opacity:0.35;" id="channel-runs-label"></span>
         </div>
-        <div class="chart-wrap">
-            <canvas id="channelChart"></canvas>
+        <div class="flex items-center justify-center py-12" style="color:#5a6779;opacity:0.4;">
+            <p class="text-sm font-medium">Coming soon</p>
         </div>
     </div>
 
     <!-- Funnel -->
     <div class="card">
-        <div class="flex items-center justify-between px-5 pt-4 pb-1">
+        <div class="px-5 pt-4 pb-1">
             <span class="section-label">Funnel Drop-off</span>
-            <select class="input-field" style="width:auto;padding:4px 10px;font-size:12px;" id="funnel-platform">
-                <option value="">All platforms</option>
-                <option value="instagram">Instagram</option>
-                <option value="patreon">Patreon</option>
-                <option value="facebook">Facebook</option>
-            </select>
         </div>
-        <div class="chart-wrap">
-            <canvas id="funnelChart"></canvas>
+        <div class="flex items-center justify-center py-12" style="color:#5a6779;opacity:0.4;">
+            <p class="text-sm font-medium">Coming soon</p>
         </div>
     </div>
 
@@ -71,47 +64,40 @@
         <div class="px-5 pt-4 pb-1">
             <span class="section-label">Tier Distribution</span>
         </div>
-        <div class="chart-wrap" style="display:flex;align-items:center;justify-content:center;">
-            <canvas id="tierChart" style="max-width:320px;max-height:320px;"></canvas>
+        <div class="flex items-center justify-center py-12" style="color:#5a6779;opacity:0.4;">
+            <p class="text-sm font-medium">Coming soon</p>
         </div>
     </div>
 
     <!-- Trends -->
     <div class="card" style="grid-column: 1 / -1;">
-        <div class="flex items-center justify-between px-5 pt-4 pb-1">
+        <div class="px-5 pt-4 pb-1">
             <span class="section-label">30-Day Trends</span>
-            <select class="input-field" style="width:auto;padding:4px 10px;font-size:12px;" id="trends-platform">
-                <option value="">All platforms</option>
-                <option value="instagram">Instagram</option>
-                <option value="patreon">Patreon</option>
-                <option value="facebook">Facebook</option>
-            </select>
         </div>
-        <div class="chart-wrap">
-            <canvas id="trendsChart"></canvas>
+        <div class="flex items-center justify-center py-12" style="color:#5a6779;opacity:0.4;">
+            <p class="text-sm font-medium">Coming soon</p>
         </div>
-        <div class="px-5 pb-4 flex gap-4" id="benchmark-badges"></div>
     </div>
 
     <!-- Benchmark Comparison -->
-    <div class="card" style="grid-column: 1 / -1;" id="benchmark-card">
-        <div class="flex items-center justify-between px-5 pt-4 pb-1">
+    <div class="card" style="grid-column: 1 / -1;">
+        <div class="px-5 pt-4 pb-1">
             <span class="section-label">Benchmark Comparison</span>
-            <select class="input-field" style="width:auto;padding:4px 10px;font-size:12px;" id="bench-platform">
-                <option value="">All platforms</option>
-                <option value="instagram">Instagram</option>
-                <option value="patreon">Patreon</option>
-                <option value="facebook">Facebook</option>
-            </select>
         </div>
-        <div class="px-5 pb-2 pt-3" id="benchmark-metrics"></div>
-        <div class="px-5 pb-4" id="benchmark-deviations"></div>
+        <div class="flex items-center justify-center py-12" style="color:#5a6779;opacity:0.4;">
+            <p class="text-sm font-medium">Coming soon</p>
+        </div>
     </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
+<!-- Charts JS disabled while graphs are hidden -->
+<!--
 <script>
+if (!window._evalLoaded) {
+window._evalLoaded = true;
+(function() {
 const COLORS = {
     teal:    '#00b2c9',
     tealDk:  '#005c69',
@@ -529,5 +515,8 @@ if (document.readyState === 'loading') {
 } else {
     initEvalCharts();
 }
+})();
+}
 </script>
+-->
 {% endblock %}

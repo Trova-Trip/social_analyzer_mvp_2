@@ -3,6 +3,7 @@ Discovery routes — Discovery UI page + HTMX partials + presets API + staleness
 """
 import logging
 import traceback
+import requests as http_requests
 from flask import Blueprint, render_template, request, jsonify
 
 from app.database import get_session
@@ -128,33 +129,89 @@ def delete_preset(preset_id):
 
 KEYWORD_PROMPTS = {
     'instagram': (
-        "You are a social media marketing expert. Given these Instagram discovery keywords, "
-        "suggest 8-10 related terms that would help find travel creators on Instagram. "
-        "Include a mix of hashtags (with #) and bio phrases. "
-        "Return one suggestion per line, nothing else."
+        "Suggest 8 Instagram hashtags or short bio phrases related to the given keywords "
+        "for finding travel creators. Output ONLY a plain list, one item per line. "
+        "No numbering, no bullets, no bold, no explanations."
     ),
     'patreon': (
-        "You are a creator economy expert. Given these Patreon search keywords, "
-        "suggest 8-10 related search terms for finding travel-related creators on Patreon. "
-        "Focus on creator niches, content types, and travel sub-topics. "
-        "Return one suggestion per line, nothing else."
+        "Suggest 8 Patreon search terms related to the given keywords "
+        "for finding travel creators. Output ONLY a plain list, one item per line. "
+        "No numbering, no bullets, no bold, no explanations."
     ),
     'facebook': (
-        "You are a community marketing expert. Given these Facebook group search keywords, "
-        "suggest 8-10 related terms for finding travel-related Facebook groups. "
-        "Focus on group topics, travel niches, and community themes. "
-        "Return one suggestion per line, nothing else."
+        "Suggest 8 Facebook group search terms related to the given keywords "
+        "for finding travel groups. Output ONLY a plain list, one item per line. "
+        "No numbering, no bullets, no bold, no explanations."
     ),
 }
 
 
+def _call_anthropic(system_prompt, user_input):
+    """Call Claude Haiku via Anthropic API (production)."""
+    from app.extensions import anthropic_client
+    from app.services.circuit_breaker import get_breaker
+    cb = get_breaker('anthropic')
+    response = cb.call(
+        anthropic_client.messages.create,
+        model="claude-haiku-4-5-20251001",
+        max_tokens=256,
+        system=system_prompt,
+        messages=[{"role": "user", "content": user_input}],
+    )
+    return response.content[0].text
+
+
+def _call_ollama(system_prompt, user_input):
+    """Call local Ollama model (development)."""
+    from app.config import OLLAMA_URL, OLLAMA_MODEL
+    resp = http_requests.post(
+        f"{OLLAMA_URL}/api/chat",
+        json={
+            "model": OLLAMA_MODEL,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_input},
+            ],
+            "stream": False,
+        },
+        timeout=30,
+    )
+    resp.raise_for_status()
+    return resp.json()["message"]["content"]
+
+
+import re
+
+def _parse_suggestions(raw):
+    """Parse LLM output into clean suggestion strings.
+
+    Handles numbered lists, bullets, bold markers, quotes, and emoji clutter
+    that small local models tend to produce.
+    """
+    lines = []
+    for line in raw.strip().splitlines():
+        s = line.strip()
+        if not s:
+            continue
+        # Strip numbered prefixes: "1.", "1)", "1:"
+        s = re.sub(r'^\d+[\.\)\:]\s*', '', s)
+        # Strip bullet chars and bold markers
+        s = s.lstrip('•-*').strip()
+        s = s.replace('**', '')
+        # Strip wrapping quotes
+        s = s.strip('"\'')
+        # Strip label prefixes like "Bio Phrase 1:"
+        s = re.sub(r'^[A-Za-z ]+\d*:\s*', '', s).strip()
+        # Drop empty or very short leftovers
+        if len(s) >= 2:
+            lines.append(s)
+    return lines
+
+
 @bp.route('/api/keyword-suggestions', methods=['POST'])
 def keyword_suggestions():
-    """Generate AI keyword suggestions using Claude Haiku."""
+    """Generate AI keyword suggestions — Anthropic in prod, Ollama locally."""
     from app.extensions import anthropic_client
-
-    if not anthropic_client:
-        return jsonify({'error': 'AI suggestions unavailable — ANTHROPIC_API_KEY not configured'}), 503
 
     data = request.json or {}
     platform = data.get('platform', 'instagram')
@@ -167,17 +224,12 @@ def keyword_suggestions():
     user_input = "Current keywords: " + ", ".join(keywords)
 
     try:
-        from app.services.circuit_breaker import get_breaker
-        cb = get_breaker('anthropic')
-        response = cb.call(
-            anthropic_client.messages.create,
-            model="claude-haiku-4-5-20251001",
-            max_tokens=256,
-            system=system_prompt,
-            messages=[{"role": "user", "content": user_input}],
-        )
-        raw = response.content[0].text
-        suggestions = [line.strip().lstrip('•-').strip() for line in raw.strip().splitlines() if line.strip()]
+        if anthropic_client:
+            raw = _call_anthropic(system_prompt, user_input)
+        else:
+            raw = _call_ollama(system_prompt, user_input)
+
+        suggestions = _parse_suggestions(raw)
 
         # Deduplicate against user's existing keywords (case-insensitive)
         existing = {k.lower() for k in keywords}

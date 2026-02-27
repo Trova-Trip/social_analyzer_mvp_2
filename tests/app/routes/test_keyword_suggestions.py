@@ -13,12 +13,21 @@ def _mock_anthropic_response(text):
     return msg
 
 
+def _mock_ollama_response(text):
+    """Build a mock Ollama /api/chat JSON response."""
+    resp = MagicMock()
+    resp.status_code = 200
+    resp.json.return_value = {"message": {"content": text}}
+    resp.raise_for_status = MagicMock()
+    return resp
+
+
 # ---------------------------------------------------------------------------
-# Happy paths — one per platform
+# Happy paths — Anthropic (production)
 # ---------------------------------------------------------------------------
 
 class TestKeywordSuggestionsInstagram:
-    """POST /api/keyword-suggestions with platform=instagram."""
+    """POST /api/keyword-suggestions with platform=instagram (Anthropic)."""
 
     @patch('app.extensions.anthropic_client')
     def test_returns_suggestions(self, mock_client, client):
@@ -35,7 +44,7 @@ class TestKeywordSuggestionsInstagram:
 
 
 class TestKeywordSuggestionsPatreon:
-    """POST /api/keyword-suggestions with platform=patreon."""
+    """POST /api/keyword-suggestions with platform=patreon (Anthropic)."""
 
     @patch('app.extensions.anthropic_client')
     def test_returns_suggestions(self, mock_client, client):
@@ -53,7 +62,7 @@ class TestKeywordSuggestionsPatreon:
 
 
 class TestKeywordSuggestionsFacebook:
-    """POST /api/keyword-suggestions with platform=facebook."""
+    """POST /api/keyword-suggestions with platform=facebook (Anthropic)."""
 
     @patch('app.extensions.anthropic_client')
     def test_returns_suggestions(self, mock_client, client):
@@ -70,6 +79,65 @@ class TestKeywordSuggestionsFacebook:
 
 
 # ---------------------------------------------------------------------------
+# Happy paths — Ollama fallback (local dev)
+# ---------------------------------------------------------------------------
+
+class TestKeywordSuggestionsOllama:
+    """POST /api/keyword-suggestions falls back to Ollama when no Anthropic key."""
+
+    def test_ollama_fallback_returns_suggestions(self, client):
+        """When anthropic_client is None, endpoint calls Ollama."""
+        with patch('app.extensions.anthropic_client', new=None), \
+             patch('app.routes.discovery._call_ollama') as mock_ollama:
+            mock_ollama.return_value = "#solotravel\nbudget backpacking\n#digitalnomad\ntravel tips"
+            resp = client.post('/api/keyword-suggestions',
+                               json={'platform': 'instagram', 'keywords': ['travel']})
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert len(data['suggestions']) == 4
+        assert '#solotravel' in data['suggestions']
+        mock_ollama.assert_called_once()
+
+    def test_ollama_deduplicates(self, client):
+        """Ollama suggestions are deduplicated the same way as Anthropic."""
+        with patch('app.extensions.anthropic_client', new=None), \
+             patch('app.routes.discovery._call_ollama') as mock_ollama:
+            mock_ollama.return_value = "Travel\nnew idea\nHiking\nexplore"
+            resp = client.post('/api/keyword-suggestions',
+                               json={'platform': 'instagram', 'keywords': ['travel', 'hiking']})
+        assert resp.status_code == 200
+        suggestions_lower = [s.lower() for s in resp.get_json()['suggestions']]
+        assert 'travel' not in suggestions_lower
+        assert 'hiking' not in suggestions_lower
+        assert 'new idea' in suggestions_lower
+
+    def test_ollama_error_returns_500(self, client):
+        """Ollama connection failure returns 500."""
+        with patch('app.extensions.anthropic_client', new=None), \
+             patch('app.routes.discovery._call_ollama', side_effect=Exception("Connection refused")):
+            resp = client.post('/api/keyword-suggestions',
+                               json={'platform': 'instagram', 'keywords': ['travel']})
+        assert resp.status_code == 500
+
+
+class TestCallOllama:
+    """Unit tests for _call_ollama helper."""
+
+    @patch('app.routes.discovery.http_requests')
+    def test_posts_to_ollama_api(self, mock_http, client):
+        """Verify correct Ollama API call shape."""
+        mock_http.post.return_value = _mock_ollama_response("suggestion 1\nsuggestion 2")
+        from app.routes.discovery import _call_ollama
+        result = _call_ollama("system prompt", "user input")
+        assert result == "suggestion 1\nsuggestion 2"
+        call_args = mock_http.post.call_args
+        payload = call_args[1]['json']
+        assert payload['messages'][0]['role'] == 'system'
+        assert payload['messages'][1]['role'] == 'user'
+        assert payload['stream'] is False
+
+
+# ---------------------------------------------------------------------------
 # Error cases
 # ---------------------------------------------------------------------------
 
@@ -82,13 +150,6 @@ class TestKeywordSuggestionsErrors:
                                json={'platform': 'instagram', 'keywords': []})
             assert resp.status_code == 400
             assert 'error' in resp.get_json()
-
-    def test_503_when_client_unavailable(self, client):
-        with patch('app.extensions.anthropic_client', new=None):
-            resp = client.post('/api/keyword-suggestions',
-                               json={'platform': 'instagram', 'keywords': ['travel']})
-            assert resp.status_code == 503
-            assert 'unavailable' in resp.get_json()['error'].lower()
 
     @patch('app.extensions.anthropic_client')
     def test_500_on_api_error(self, mock_client, client):

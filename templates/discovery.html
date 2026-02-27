@@ -4,7 +4,7 @@
 {% block page_title %}New Discovery{% endblock %}
 
 {% block content %}
-    <div class="max-w-3xl mx-auto">
+    <div class="max-w-3xl mx-auto" hx-boost="false">
         <div class="mb-6 animate-in">
             <h1 class="text-xl font-bold" style="color:#005c69;">New Discovery Run</h1>
             <p class="mt-1 text-sm" style="color:#3c4858;opacity:0.6;">Configure filters, launch a run, and track it through the 6-stage pipeline</p>
@@ -176,8 +176,8 @@
             </div>
         </div>
 
-        <!-- Presets -->
-        <div class="card p-5 mb-4 animate-in" style="animation-delay:0.11s;">
+        <!-- Presets (hidden — see roadmap dev tasks) -->
+        <div class="card p-5 mb-4 animate-in hidden" id="presets-section" style="animation-delay:0.11s;">
             <div class="flex items-center justify-between mb-3">
                 <h2 class="section-label">Presets</h2>
                 <button type="button" id="save-preset-btn" onclick="savePreset()"
@@ -525,8 +525,11 @@
 
 {% block scripts %}
 <script>
+if (!window._discoveryLoaded) {
+window._discoveryLoaded = true;
+(function() {
 // ── Platform switching ───────────────────────────────────────────────
-let selectedPlatform = 'instagram';
+var selectedPlatform = 'instagram';
 
 document.querySelectorAll('.platform-card').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -551,7 +554,7 @@ function getBdrNames() {
 }
 
 // ── Tag inputs ───────────────────────────────────────────────────────
-const _tagState = {};
+var _tagState = {};
 
 function initTagInput(wrapperId, inputId) {
     _tagState[wrapperId] = [];
@@ -592,7 +595,7 @@ initTagInput('patreon-keyword-wrapper', 'patreon-keyword-input');
 initTagInput('facebook-keyword-wrapper', 'facebook-keyword-input');
 
 // ── Bio phrase advanced ──────────────────────────────────────────────
-const BIO_MAX = 15;
+var BIO_MAX = 15;
 
 document.getElementById('bio-phrase-0').addEventListener('input', function() {
     const rows = document.querySelectorAll('#bio-phrase-rows .bio-action-row').length + 1;
@@ -716,7 +719,8 @@ document.getElementById('discovery-form').addEventListener('submit', async funct
     }
 });
 
-function buildFilters() {
+function buildFilters(opts) {
+    var quiet = opts && opts.quiet;
     const filters = {};
 
     if (selectedPlatform === 'instagram') {
@@ -726,14 +730,14 @@ function buildFilters() {
             max: parseInt(document.getElementById('max-followers').value),
         };
         if (filters.follower_count.min >= filters.follower_count.max) {
-            showModal('Min followers must be less than max', {type: 'warning', title: 'Invalid range'});
+            if (!quiet) showModal('Min followers must be less than max', {type: 'warning', title: 'Invalid range'});
             return null;
         }
 
         const lt = document.querySelector('input[name="lookalike-type"]:checked').value;
         const lu = document.getElementById('lookalike-username').value.trim();
         if (lt !== 'none') {
-            if (!lu) { showModal('Enter a username for lookalike search', {type: 'warning', title: 'Missing username'}); return null; }
+            if (!lu) { if (!quiet) showModal('Enter a username for lookalike search', {type: 'warning', title: 'Missing username'}); return null; }
             filters.lookalike_type = lt;
             filters.lookalike_username = lu;
         }
@@ -754,7 +758,7 @@ function buildFilters() {
 
     } else if (selectedPlatform === 'patreon') {
         const kw = getTagValues('patreon-keyword-wrapper');
-        if (!kw.length) { showModal('Enter at least one search keyword', {type: 'warning', title: 'Missing keywords'}); return null; }
+        if (!kw.length) { if (!quiet) showModal('Enter at least one search keyword', {type: 'warning', title: 'Missing keywords'}); return null; }
         filters.search_keywords = kw;
         filters.max_results = parseInt(document.getElementById('patreon-max-results').value);
 
@@ -765,14 +769,14 @@ function buildFilters() {
         const maxP = parseInt(document.getElementById('patreon-max-patrons').value) || 0;
         if (minP > 0) filters.min_patrons = minP;
         if (maxP > 0) filters.max_patrons = maxP;
-        if (minP > 0 && maxP > 0 && minP >= maxP) { showModal('Min patrons must be less than max', {type: 'warning', title: 'Invalid range'}); return null; }
+        if (minP > 0 && maxP > 0 && minP >= maxP) { if (!quiet) showModal('Min patrons must be less than max', {type: 'warning', title: 'Invalid range'}); return null; }
 
         const minPosts = parseInt(document.getElementById('patreon-min-posts').value) || 0;
         if (minPosts > 0) filters.min_posts = minPosts;
 
     } else if (selectedPlatform === 'facebook') {
         const kw = getTagValues('facebook-keyword-wrapper');
-        if (!kw.length) { showModal('Enter at least one search keyword', {type: 'warning', title: 'Missing keywords'}); return null; }
+        if (!kw.length) { if (!quiet) showModal('Enter at least one search keyword', {type: 'warning', title: 'Missing keywords'}); return null; }
         filters.keywords = kw;
         filters.max_results = parseInt(document.getElementById('facebook-max-results').value);
 
@@ -780,7 +784,7 @@ function buildFilters() {
         const maxM = parseInt(document.getElementById('facebook-max-members').value) || 0;
         if (minM > 0) filters.min_members = minM;
         if (maxM > 0) filters.max_members = maxM;
-        if (minM > 0 && maxM > 0 && minM >= maxM) { showModal('Min members must be less than max', {type: 'warning', title: 'Invalid range'}); return null; }
+        if (minM > 0 && maxM > 0 && minM >= maxM) { if (!quiet) showModal('Min members must be less than max', {type: 'warning', title: 'Invalid range'}); return null; }
 
         const vis = document.getElementById('facebook-visibility').value;
         if (vis !== 'all') filters.visibility = vis;
@@ -797,10 +801,10 @@ function buildFilters() {
 }
 
 // ── Cost estimate ────────────────────────────────────────────────────
-let _costTimer;
+var _costTimer;
 async function fetchCostEstimate() {
     try {
-        const filters = buildFilters();
+        const filters = buildFilters({quiet: true});
         if (!filters) return;
         const res = await fetch('/api/cost-estimate', {
             method: 'POST',
@@ -839,7 +843,7 @@ document.querySelectorAll('.platform-card').forEach(btn => {
 setTimeout(fetchCostEstimate, 500);
 
 // ── Presets ──────────────────────────────────────────────────────────
-let _presets = [];
+var _presets = [];
 
 async function loadPresets() {
     try {
@@ -888,7 +892,7 @@ function loadPreset(presetId) {
 async function savePreset() {
     const filters = buildFilters();
     if (!filters) return;
-    const name = prompt('Preset name:');
+    const name = await showPrompt('Name this preset:', {title: 'Save Preset', placeholder: 'e.g. Travel micro-influencers'});
     if (!name) return;
     try {
         const res = await fetch('/api/presets', {
@@ -908,7 +912,7 @@ document.querySelectorAll('.platform-card').forEach(btn => {
 });
 
 // ── AI Keyword Suggestions ──────────────────────────────────────────
-const _suggestionState = {};
+var _suggestionState = {};
 
 function _getExistingKeywords(platform) {
     if (platform === 'instagram') {
@@ -1040,7 +1044,7 @@ function acceptAllSuggestions(platform) {
 // ── Staleness check ──────────────────────────────────────────────────
 async function checkStaleness() {
     try {
-        const filters = buildFilters();
+        const filters = buildFilters({quiet: true});
         if (!filters) return;
         const url = '/api/filter-staleness?platform=' + selectedPlatform +
                     '&filters=' + encodeURIComponent(JSON.stringify(filters));
@@ -1058,7 +1062,7 @@ async function checkStaleness() {
 }
 
 // Debounced staleness check on filter changes
-let _stalenessTimer;
+var _stalenessTimer;
 function debouncedStaleness() {
     clearTimeout(_stalenessTimer);
     _stalenessTimer = setTimeout(checkStaleness, 1500);
@@ -1070,7 +1074,7 @@ document.querySelectorAll('.input-field').forEach(el => {
 // ── Similar search detection ────────────────────────────────────────
 async function checkSimilarity() {
     try {
-        const filters = buildFilters();
+        const filters = buildFilters({quiet: true});
         if (!filters) return;
         const res = await fetch('/api/filter-similarity', {
             method: 'POST',
@@ -1093,7 +1097,7 @@ async function checkSimilarity() {
 }
 
 // Debounced similarity check on filter changes
-let _similarityTimer;
+var _similarityTimer;
 function debouncedSimilarity() {
     clearTimeout(_similarityTimer);
     _similarityTimer = setTimeout(checkSimilarity, 2000);
@@ -1104,5 +1108,18 @@ document.querySelectorAll('.input-field').forEach(el => {
 document.querySelectorAll('.platform-card').forEach(btn => {
     btn.addEventListener('click', () => { if (!btn.disabled) setTimeout(checkSimilarity, 300); });
 });
+
+// Expose functions used by inline onclick/onchange handlers
+window.bioAddClause = bioAddClause;
+window.bioRefreshAddBtn = bioRefreshAddBtn;
+window._removeTag = _removeTag;
+window.loadPreset = loadPreset;
+window.savePreset = savePreset;
+window.suggestKeywords = suggestKeywords;
+window.acceptSuggestion = acceptSuggestion;
+window.dismissSuggestion = dismissSuggestion;
+window.acceptAllSuggestions = acceptAllSuggestions;
+})();
+}
 </script>
 {% endblock %}
