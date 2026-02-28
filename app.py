@@ -522,7 +522,57 @@ def enrich_webhook():
         print(f"ERROR in webhook: {e}")
         import traceback
         print(traceback.format_exc())
-        
+
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+
+@app.route('/api/webhook/rewarm', methods=['POST'])
+def rewarm_webhook():
+    """
+    Webhook endpoint for rewarm enrichment.
+    Same payload as /api/webhook/enrich — contact_id, profile_url, bio, follower_count.
+    Skips scoring; only populates profile/content fields via the rewarm HubSpot webhook.
+    """
+    try:
+        data = request.json
+        print(f"=== [REWARM] WEBHOOK RECEIVED ===")
+        print(f"Data: {json.dumps(data, indent=2)}")
+
+        contact_id    = data.get('contact_id')
+        profile_url   = data.get('profile_url')
+        bio           = data.get('bio', '')
+        follower_count = data.get('follower_count', 0)
+
+        if not contact_id or not profile_url:
+            return jsonify({
+                'status': 'error',
+                'message': 'Missing contact_id or profile_url'
+            }), 400
+
+        from tasks import process_rewarm_profile
+        task = process_rewarm_profile.apply_async(
+            args=[contact_id, profile_url],
+            kwargs={'bio': bio, 'follower_count': follower_count},
+            queue='rewarm'
+        )
+
+        r.hincrby('rewarmstats:results', 'queued', 1)
+
+        print(f"[REWARM] ✅ Task queued: {task.id}")
+
+        return jsonify({
+            'status': 'success',
+            'task_id': task.id,
+            'message': f'Rewarm enrichment task queued for contact {contact_id}'
+        }), 200
+
+    except Exception as e:
+        print(f"[REWARM] ERROR in webhook: {e}")
+        import traceback
+        print(traceback.format_exc())
         return jsonify({
             'status': 'error',
             'message': str(e)
