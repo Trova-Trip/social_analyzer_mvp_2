@@ -59,6 +59,7 @@ class Run:
         self.estimated_cost = 0.0
         self.actual_cost = 0.0
         self.stage_outputs = {}
+        self.stage_timings = {}
 
     def to_dict(self) -> Dict:
         return {
@@ -82,6 +83,8 @@ class Run:
             'summary': self.summary,
             'estimated_cost': self.estimated_cost,
             'actual_cost': self.actual_cost,
+            'stage_timings': self.stage_timings,
+            'stage_outputs': self.stage_outputs,
         }
 
     def save(self):
@@ -156,6 +159,7 @@ class Run:
         run.estimated_cost = db_run.estimated_cost or 0.0
         run.actual_cost = db_run.actual_cost or 0.0
         run.stage_outputs = db_run.stage_outputs or {}
+        run.stage_timings = db_run.stage_timings or {}
         return run
 
     @classmethod
@@ -187,6 +191,7 @@ class Run:
             run.estimated_cost = d.get('estimated_cost', 0.0)
             run.actual_cost = d.get('actual_cost', 0.0)
             run.stage_outputs = d.get('stage_outputs', {})
+            run.stage_timings = d.get('stage_timings', {})
             return run
 
         # Fallback to DB

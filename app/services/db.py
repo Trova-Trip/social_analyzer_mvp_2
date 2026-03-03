@@ -54,6 +54,7 @@ def persist_run(run):
             db_run.estimated_cost = run.estimated_cost or None
             db_run.actual_cost = run.actual_cost or None
             db_run.stage_outputs = run.stage_outputs or None
+            db_run.stage_timings = run.stage_timings or None
             if run.status in ('completed', 'failed'):
                 db_run.finished_at = datetime.now()
 

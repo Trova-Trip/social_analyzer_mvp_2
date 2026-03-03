@@ -80,6 +80,10 @@ class PatreonDiscovery(StageAdapter):
         max_results = filters.get('max_results', 100)
         location = (filters.get('location') or 'United States').strip()
 
+        # Normalize: string → list (API callers may send "travel, adventure" instead of ["travel", "adventure"])
+        if isinstance(search_keywords, str):
+            search_keywords = [kw.strip() for kw in search_keywords.split(',') if kw.strip()]
+
         if not search_keywords:
             raise ValueError("search_keywords required for Patreon discovery")
 
@@ -134,6 +138,10 @@ class FacebookDiscovery(StageAdapter):
         keywords = filters.get('keywords', [])
         max_results = filters.get('max_results', 100)
         visibility = filters.get('visibility', 'all')
+
+        # Normalize: string → list (API callers may send "hiking, outdoors" instead of ["hiking", "outdoors"])
+        if isinstance(keywords, str):
+            keywords = [kw.strip() for kw in keywords.split(',') if kw.strip()]
 
         if not keywords:
             raise ValueError("keywords required for Facebook Groups discovery")

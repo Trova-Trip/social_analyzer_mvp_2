@@ -103,6 +103,7 @@ def make_run():
             errors=[],
             summary='',
             stage_outputs={},
+            stage_timings={},
         )
         defaults.update(overrides)
         run = MagicMock()

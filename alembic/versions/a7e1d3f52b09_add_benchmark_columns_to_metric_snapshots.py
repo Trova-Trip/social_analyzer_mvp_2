@@ -24,11 +24,14 @@ def upgrade() -> None:
     op.add_column('metric_snapshots', sa.Column('avg_synced', sa.Float(), server_default='0.0'))
     op.add_column('metric_snapshots', sa.Column('funnel_conversion', sa.Float(), server_default='0.0'))
     op.add_column('metric_snapshots', sa.Column('avg_cost_per_lead', sa.Float(), server_default='0.0'))
-    op.create_unique_constraint('uq_metric_snapshot_date_platform', 'metric_snapshots', ['date', 'platform'])
+    # Use batch mode for SQLite compatibility
+    with op.batch_alter_table('metric_snapshots') as batch_op:
+        batch_op.create_unique_constraint('uq_metric_snapshot_date_platform', ['date', 'platform'])
 
 
 def downgrade() -> None:
-    op.drop_constraint('uq_metric_snapshot_date_platform', 'metric_snapshots', type_='unique')
+    with op.batch_alter_table('metric_snapshots') as batch_op:
+        batch_op.drop_constraint('uq_metric_snapshot_date_platform', type_='unique')
     op.drop_column('metric_snapshots', 'avg_cost_per_lead')
     op.drop_column('metric_snapshots', 'funnel_conversion')
     op.drop_column('metric_snapshots', 'avg_synced')

@@ -34,6 +34,7 @@ def analyze_thumbnail_evidence(
     thumbnail_urls: List[str],
     engagement_data: List[Dict],
     contact_id: str,
+    tag: str = '',
 ) -> Dict[str, Any]:
     """Extract structured evidence from thumbnail grid (up to 12 posts)."""
     if not thumbnail_urls:
@@ -103,11 +104,11 @@ Respond ONLY with JSON:
         "posts_analyzed": len(engagement_data),
     }
 
-    logger.debug("Thumbnail evidence: %s", json.dumps(result, indent=2))
+    logger.debug("[%s] Thumbnail evidence: %s", tag, json.dumps(result, indent=2))
     return result
 
 
-def _analyze_single_content(idx, item, contact_id):
+def _analyze_single_content(idx, item, contact_id, tag=''):
     """Analyze a single content item (rehost + GPT-4.1/Whisper). Thread-safe."""
     content_format = item.get('format')
     media_url = None
@@ -128,7 +129,7 @@ def _analyze_single_content(idx, item, contact_id):
         media_format = 'IMAGE'
 
     if not media_url:
-        logger.warning("Item at index %d: No media URL, skipping", idx)
+        logger.warning("[%s] Item %d: No media URL, skipping", tag, idx)
         return None
 
     media_url = media_url.rstrip('.')
@@ -138,10 +139,10 @@ def _analyze_single_content(idx, item, contact_id):
             head_response = requests.head(media_url, timeout=10)
             content_length = int(head_response.headers.get('content-length', 0))
             if content_length > 25 * 1024 * 1024:
-                logger.warning("Item %d: Video too large (%.1fMB), skipping", idx, content_length / 1024 / 1024)
+                logger.warning("[%s] Item %d: Video too large (%.1fMB), skipping", tag, idx, content_length / 1024 / 1024)
                 return None
         except Exception as e:
-            logger.warning("Item %d: Could not check video size: %s, attempting anyway", idx, e)
+            logger.warning("[%s] Item %d: Could not check video size: %s, attempting anyway", tag, idx, e)
 
     try:
         rehosted_url = rehost_media_on_r2(media_url, contact_id, media_format)
@@ -150,10 +151,10 @@ def _analyze_single_content(idx, item, contact_id):
         analysis['is_pinned'] = item.get('is_pinned', False)
         analysis['likes_and_views_disabled'] = item.get('likes_and_views_disabled', False)
         analysis['engagement'] = item.get('engagement', {})
-        logger.debug("Item %d: Successfully analyzed", idx)
+        logger.debug("[%s] Item %d: analyzed", tag, idx)
         return analysis
     except Exception as e:
-        logger.error("Item %d: Error analyzing: %s", idx, e)
+        logger.error("[%s] Item %d: Error analyzing: %s", tag, idx, e)
         return None
 
 
@@ -161,12 +162,13 @@ def analyze_selected_content(
     filtered_items: List[Dict],
     selected_indices: List[int],
     contact_id: str,
+    tag: str = '',
 ) -> List[Dict[str, Any]]:
     """Analyze 3 selected content items in parallel (rehost + GPT-4.1/Whisper)."""
     tasks = []
     for idx in selected_indices[:3]:
         if idx >= len(filtered_items):
-            logger.warning("Index %d out of range, skipping", idx)
+            logger.warning("[%s] Index %d out of range, skipping", tag, idx)
             continue
         tasks.append((idx, filtered_items[idx]))
 
@@ -175,7 +177,7 @@ def analyze_selected_content(
 
     content_analyses = []
     with ThreadPoolExecutor(max_workers=3) as pool:
-        futures = {pool.submit(_analyze_single_content, idx, item, contact_id): idx for idx, item in tasks}
+        futures = {pool.submit(_analyze_single_content, idx, item, contact_id, tag): idx for idx, item in tasks}
         for future in as_completed(futures):
             result = future.result()
             if result:
@@ -184,7 +186,7 @@ def analyze_selected_content(
     return content_analyses
 
 
-def gather_evidence(filtered_items: List[Dict], bio: str, contact_id: str):
+def gather_evidence(filtered_items: List[Dict], bio: str, contact_id: str, tag: str = ''):
     """Gather evidence from bio, captions, and thumbnails (all 12 posts)."""
     thumbnail_urls = []
     captions = []
@@ -203,27 +205,80 @@ def gather_evidence(filtered_items: List[Dict], bio: str, contact_id: str):
             'engagement': item.get('engagement', {}),
         })
 
-    logger.info("Gathering evidence from: %d thumbnails, %d captions", len(thumbnail_urls), len(captions))
+    logger.info("[%s] Gathering evidence: %d thumbnails, %d captions", tag, len(thumbnail_urls), len(captions))
 
     with ThreadPoolExecutor(max_workers=3) as pool:
         bio_future = pool.submit(analyze_bio_evidence, bio)
         caption_future = pool.submit(analyze_caption_evidence, captions)
-        thumb_future = pool.submit(analyze_thumbnail_evidence, thumbnail_urls, engagement_data, contact_id)
+        thumb_future = pool.submit(analyze_thumbnail_evidence, thumbnail_urls, engagement_data, contact_id, tag)
 
         bio_evidence = bio_future.result()
         caption_evidence = caption_future.result()
         thumbnail_evidence = thumb_future.result()
 
-    logger.info("Evidence gathering complete")
+    logger.info("[%s] Evidence gathering complete", tag)
     return bio_evidence, caption_evidence, thumbnail_evidence
 
 
 # ── Adapters ──────────────────────────────────────────────────────────────────
 
+def _analyze_instagram_profile(profile, run_id):
+    """Analyze a single Instagram profile. Thread-safe — no run mutations."""
+    profile_url = profile.get('profile_url') or profile.get('instagram_handle') or profile.get('url', '')
+    contact_id = profile.get('contact_id') or profile.get('id', run_id)
+    bio = profile.get('bio', '')
+    filtered_items = profile.get('_content_items', [])
+    selected_indices = profile.get('_selected_indices', [0, 1, 2])
+    tag = profile_url.split('/')[-1] if '/' in profile_url else profile_url
+
+    if not filtered_items:
+        return None, f"No content for {profile_url}"
+
+    t0 = time.monotonic()
+    logger.info("[%s] Starting analysis (%d content items)", tag, len(filtered_items))
+
+    # Content analysis + evidence gathering in parallel
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        content_future = pool.submit(analyze_selected_content, filtered_items, selected_indices, contact_id, tag)
+        evidence_future = pool.submit(gather_evidence, filtered_items, bio, contact_id, tag)
+
+        content_analyses = content_future.result()
+        if not content_analyses:
+            evidence_future.cancel()
+            return None, f"Could not analyze content for {profile_url}"
+
+        bio_evidence, caption_evidence, thumbnail_evidence = evidence_future.result()
+
+    t1 = time.monotonic()
+
+    # Creator profile synthesis (needs content_analyses)
+    creator_profile = generate_creator_profile(content_analyses)
+
+    elapsed = time.monotonic() - t0
+    logger.info("[%s] Done %.1fs (parallel %.1fs + profile %.1fs)",
+                tag, elapsed, t1 - t0, elapsed - (t1 - t0))
+
+    # Attach results
+    profile['_content_analyses'] = content_analyses
+    profile['_bio_evidence'] = bio_evidence
+    profile['_caption_evidence'] = caption_evidence
+    profile['_thumbnail_evidence'] = thumbnail_evidence
+    profile['_creator_profile'] = creator_profile
+
+    return profile, None
+
+
+# Max profiles to analyze concurrently.
+# Instagram: ~8 API calls/profile → 10 × 8 = ~80 concurrent requests (well within 5k RPM).
+# Patreon/Facebook: 1 API call/profile → trivial.
+ANALYSIS_CONCURRENCY = 10
+
+
 class InstagramAnalysis(StageAdapter):
     """
     IG analysis: GPT-4.1 vision on 3 posts + Whisper on reels + evidence gathering.
     Uses _content_items and _selected_indices from prescreen stage.
+    Processes up to ANALYSIS_CONCURRENCY profiles in parallel.
     """
     platform = 'instagram'
 
@@ -237,57 +292,26 @@ class InstagramAnalysis(StageAdapter):
         analyzed = []
         errors = []
 
-        for profile in profiles:
-            profile_url = profile.get('profile_url') or profile.get('instagram_handle') or profile.get('url', '')
-            contact_id = profile.get('contact_id') or profile.get('id', run.id)
-            bio = profile.get('bio', '')
-            filtered_items = profile.get('_content_items', [])
-            selected_indices = profile.get('_selected_indices', [0, 1, 2])
-
-            if not filtered_items:
-                errors.append(f"No content for {profile_url}")
-                continue
-
-            try:
-                t0 = time.monotonic()
-
-                # Content analysis + evidence gathering in parallel
-                with ThreadPoolExecutor(max_workers=2) as pool:
-                    content_future = pool.submit(analyze_selected_content, filtered_items, selected_indices, contact_id)
-                    evidence_future = pool.submit(gather_evidence, filtered_items, bio, contact_id)
-
-                    content_analyses = content_future.result()
-                    if not content_analyses:
-                        evidence_future.cancel()
-                        errors.append(f"Could not analyze content for {profile_url}")
-                        continue
-
-                    bio_evidence, caption_evidence, thumbnail_evidence = evidence_future.result()
-
-                t1 = time.monotonic()
-
-                # Creator profile synthesis (needs content_analyses)
-                creator_profile = generate_creator_profile(content_analyses)
-
-                elapsed = time.monotonic() - t0
-                logger.info("%s: analysis %.1fs (parallel %.1fs + profile %.1fs)",
-                            profile_url, elapsed, t1 - t0, elapsed - (t1 - t0))
-
-                # Attach results
-                profile['_content_analyses'] = content_analyses
-                profile['_bio_evidence'] = bio_evidence
-                profile['_caption_evidence'] = caption_evidence
-                profile['_thumbnail_evidence'] = thumbnail_evidence
-                profile['_creator_profile'] = creator_profile
-
-                analyzed.append(profile)
-                run.increment_stage_progress('analysis', 'completed')
-                logger.info("Analyzed %s: %d items", profile_url, len(content_analyses))
-
-            except Exception as e:
-                logger.error("Error on %s: %s", profile_url, e)
-                errors.append(f"{profile_url}: {str(e)}")
-                run.increment_stage_progress('analysis', 'failed')
+        with ThreadPoolExecutor(max_workers=ANALYSIS_CONCURRENCY) as pool:
+            futures = {
+                pool.submit(_analyze_instagram_profile, p, run.id): p
+                for p in profiles
+            }
+            for future in as_completed(futures):
+                try:
+                    result, error = future.result()
+                    if error:
+                        errors.append(error)
+                        run.increment_stage_progress('analysis', 'failed')
+                    elif result:
+                        analyzed.append(result)
+                        run.increment_stage_progress('analysis', 'completed')
+                except Exception as e:
+                    p = futures[future]
+                    url = p.get('profile_url') or p.get('instagram_handle') or p.get('url', '')
+                    logger.error("Error on %s: %s", url, e)
+                    errors.append(f"{url}: {str(e)}")
+                    run.increment_stage_progress('analysis', 'failed')
 
         return StageResult(
             profiles=analyzed,
@@ -298,40 +322,22 @@ class InstagramAnalysis(StageAdapter):
         )
 
 
-class PatreonAnalysis(StageAdapter):
-    """
-    Patreon analysis: text content analysis + tier structure + patron signals.
-    Uses GPT-4.1 to evaluate creator's written content and community indicators.
-    """
-    platform = 'patreon'
-    stage = 'analysis'
-    description = 'GPT-4.1 text analysis — bio, tiers, patron signals'
-    apis = ['OpenAI']
+def _analyze_patreon_profile(profile):
+    """Analyze a single Patreon creator. Thread-safe — no run mutations."""
+    creator_name = profile.get('creator_name') or profile.get('name', 'Unknown')
+    tag = creator_name.replace(' ', '_')[:20]
 
-    def estimate_cost(self, count: int) -> float:
-        return count * 0.10
+    bio = profile.get('about', '') or profile.get('summary', '') or profile.get('description', '')
+    patron_count = int(profile.get('patron_count') or profile.get('total_members') or 0)
+    post_count = int(profile.get('post_count') or profile.get('total_posts') or 0)
+    tiers = profile.get('tiers', [])
+    social_links = {
+        k: profile.get(k) for k in
+        ['instagram_url', 'youtube_url', 'twitter_url', 'facebook_url', 'personal_website']
+        if profile.get(k)
+    }
 
-    def run(self, profiles, run) -> StageResult:
-        analyzed = []
-        errors = []
-
-        for profile in profiles:
-            creator_name = profile.get('creator_name') or profile.get('name', 'Unknown')
-
-            try:
-                # Build content summary from available Patreon data
-                bio = profile.get('about', '') or profile.get('summary', '') or profile.get('description', '')
-                patron_count = int(profile.get('patron_count') or profile.get('total_members') or 0)
-                post_count = int(profile.get('post_count') or profile.get('total_posts') or 0)
-                tiers = profile.get('tiers', [])
-                social_links = {
-                    k: profile.get(k) for k in
-                    ['instagram_url', 'youtube_url', 'twitter_url', 'facebook_url', 'personal_website']
-                    if profile.get(k)
-                }
-
-                # GPT-4.1 text analysis
-                analysis_prompt = f"""Analyze this Patreon creator for group travel host potential (TrovaTrip).
+    analysis_prompt = f"""Analyze this Patreon creator for group travel host potential (TrovaTrip).
 
 Creator: {creator_name}
 Patrons: {patron_count}
@@ -360,51 +366,83 @@ Respond ONLY with JSON:
   "overall_assessment": "1-2 sentences on group travel fit"
 }}"""
 
-                response = client.chat.completions.create(
-                    model="gpt-4.1",
-                    messages=[{"role": "user", "content": analysis_prompt}],
-                    response_format={"type": "json_object"},
-                )
-                analysis_result = json.loads(response.choices[0].message.content)
+    response = client.chat.completions.create(
+        model="gpt-4.1",
+        messages=[{"role": "user", "content": analysis_prompt}],
+        response_format={"type": "json_object"},
+    )
+    analysis_result = json.loads(response.choices[0].message.content)
 
-                # Attach results in same shape as IG for scoring compatibility
-                profile['_creator_profile'] = {
-                    'primary_category': analysis_result.get('niche_description', 'Unknown'),
-                    'content_types': 'Patreon posts',
-                    'creator_presence': 'text-based',
-                    'audience_type': analysis_result.get('audience_type', 'unknown'),
-                }
-                profile['_analysis_result'] = analysis_result
-                profile['_content_analyses'] = []  # No visual content analysis for Patreon
-                profile['_bio_evidence'] = {
-                    'niche_signals': {'niche_identified': True, 'niche_description': analysis_result.get('niche_description', '')},
-                    'in_person_events': {'evidence_found': analysis_result.get('event_evidence', False), 'event_types': []},
-                    'community_platforms': {'evidence_found': bool(analysis_result.get('community_signals')),
-                                            'platforms': analysis_result.get('community_signals', [])},
-                    'monetization': {'evidence_found': analysis_result.get('monetization_sophistication') != 'low',
-                                     'types': ['patreon_tiers']},
-                }
-                profile['_caption_evidence'] = {
-                    'in_person_events': {'mention_count': 1 if analysis_result.get('event_evidence') else 0},
-                    'community_platforms': {'mention_count': len(analysis_result.get('community_signals', []))},
-                    'audience_engagement': {'question_count': 0},
-                    'authenticity_vulnerability': {'degree': analysis_result.get('authenticity_score', 0.5), 'post_count': 0},
-                }
-                profile['_thumbnail_evidence'] = {
-                    'creator_visibility': {'visible_in_content': False, 'frequency': 'none', 'confidence': 0.0},
-                    'niche_consistency': {'consistent_theme': True, 'niche_description': analysis_result.get('niche_description', ''), 'confidence': 0.7},
-                    'event_promotion': {'evidence_found': analysis_result.get('event_evidence', False), 'post_count': 0, 'confidence': 0.5},
-                    'engagement_metrics': {'posts_above_threshold': 0, 'posts_below_threshold': 0, 'posts_hidden': 0, 'posts_analyzed': 0},
-                }
+    profile['_creator_profile'] = {
+        'primary_category': analysis_result.get('niche_description', 'Unknown'),
+        'content_types': 'Patreon posts',
+        'creator_presence': 'text-based',
+        'audience_type': analysis_result.get('audience_type', 'unknown'),
+    }
+    profile['_analysis_result'] = analysis_result
+    profile['_content_analyses'] = []
+    profile['_bio_evidence'] = {
+        'niche_signals': {'niche_identified': True, 'niche_description': analysis_result.get('niche_description', '')},
+        'in_person_events': {'evidence_found': analysis_result.get('event_evidence', False), 'event_types': []},
+        'community_platforms': {'evidence_found': bool(analysis_result.get('community_signals')),
+                                'platforms': analysis_result.get('community_signals', [])},
+        'monetization': {'evidence_found': analysis_result.get('monetization_sophistication') != 'low',
+                         'types': ['patreon_tiers']},
+    }
+    profile['_caption_evidence'] = {
+        'in_person_events': {'mention_count': 1 if analysis_result.get('event_evidence') else 0},
+        'community_platforms': {'mention_count': len(analysis_result.get('community_signals', []))},
+        'audience_engagement': {'question_count': 0},
+        'authenticity_vulnerability': {'degree': analysis_result.get('authenticity_score', 0.5), 'post_count': 0},
+    }
+    profile['_thumbnail_evidence'] = {
+        'creator_visibility': {'visible_in_content': False, 'frequency': 'none', 'confidence': 0.0},
+        'niche_consistency': {'consistent_theme': True, 'niche_description': analysis_result.get('niche_description', ''), 'confidence': 0.7},
+        'event_promotion': {'evidence_found': analysis_result.get('event_evidence', False), 'post_count': 0, 'confidence': 0.5},
+        'engagement_metrics': {'posts_above_threshold': 0, 'posts_below_threshold': 0, 'posts_hidden': 0, 'posts_analyzed': 0},
+    }
 
-                analyzed.append(profile)
-                run.increment_stage_progress('analysis', 'completed')
-                logger.info("%s: niche_description=%s", creator_name, analysis_result.get('niche_description', '?'))
+    logger.info("[%s] Done — niche=%s", tag, analysis_result.get('niche_description', '?'))
+    return profile, None
 
-            except Exception as e:
-                logger.error("Error on %s: %s", creator_name, e)
-                errors.append(f"{creator_name}: {str(e)}")
-                run.increment_stage_progress('analysis', 'failed')
+
+class PatreonAnalysis(StageAdapter):
+    """
+    Patreon analysis: text content analysis + tier structure + patron signals.
+    Processes up to ANALYSIS_CONCURRENCY profiles in parallel.
+    """
+    platform = 'patreon'
+    stage = 'analysis'
+    description = 'GPT-4.1 text analysis — bio, tiers, patron signals'
+    apis = ['OpenAI']
+
+    def estimate_cost(self, count: int) -> float:
+        return count * 0.10
+
+    def run(self, profiles, run) -> StageResult:
+        analyzed = []
+        errors = []
+
+        with ThreadPoolExecutor(max_workers=ANALYSIS_CONCURRENCY) as pool:
+            futures = {
+                pool.submit(_analyze_patreon_profile, p): p
+                for p in profiles
+            }
+            for future in as_completed(futures):
+                try:
+                    result, error = future.result()
+                    if error:
+                        errors.append(error)
+                        run.increment_stage_progress('analysis', 'failed')
+                    elif result:
+                        analyzed.append(result)
+                        run.increment_stage_progress('analysis', 'completed')
+                except Exception as e:
+                    p = futures[future]
+                    name = p.get('creator_name') or p.get('name', 'Unknown')
+                    logger.error("Error on %s: %s", name, e)
+                    errors.append(f"{name}: {str(e)}")
+                    run.increment_stage_progress('analysis', 'failed')
 
         return StageResult(
             profiles=analyzed,
@@ -415,35 +453,19 @@ Respond ONLY with JSON:
         )
 
 
-class FacebookAnalysis(StageAdapter):
-    """
-    Facebook group analysis: group health + admin profile signals.
-    Evaluates whether the group and its admin are a good fit for hosting trips.
-    """
-    platform = 'facebook'
-    stage = 'analysis'
-    description = 'GPT-4.1 text analysis — group health, admin profile'
-    apis = ['OpenAI']
+def _analyze_facebook_profile(profile):
+    """Analyze a single Facebook group. Thread-safe — no run mutations."""
+    group_name = profile.get('group_name', 'Unknown Group')
+    tag = group_name.replace(' ', '_')[:25]
 
-    def estimate_cost(self, count: int) -> float:
-        return count * 0.10
+    description = profile.get('description', '')
+    member_count = profile.get('member_count', 0)
+    posts_per_month = profile.get('posts_per_month')
+    admin_name = profile.get('creator_name', '')
+    admin_email = profile.get('email', '')
+    admin_website = profile.get('personal_website', '')
 
-    def run(self, profiles, run) -> StageResult:
-        analyzed = []
-        errors = []
-
-        for profile in profiles:
-            group_name = profile.get('group_name', 'Unknown Group')
-
-            try:
-                description = profile.get('description', '')
-                member_count = profile.get('member_count', 0)
-                posts_per_month = profile.get('posts_per_month')
-                admin_name = profile.get('creator_name', '')
-                admin_email = profile.get('email', '')
-                admin_website = profile.get('personal_website', '')
-
-                analysis_prompt = f"""Analyze this Facebook Group for group travel host potential (TrovaTrip).
+    analysis_prompt = f"""Analyze this Facebook Group for group travel host potential (TrovaTrip).
 
 Group: {group_name}
 Members: {member_count}
@@ -470,48 +492,81 @@ Respond ONLY with JSON:
   "overall_assessment": "1-2 sentences on group travel fit"
 }}"""
 
-                response = client.chat.completions.create(
-                    model="gpt-4.1",
-                    messages=[{"role": "user", "content": analysis_prompt}],
-                    response_format={"type": "json_object"},
-                )
-                analysis_result = json.loads(response.choices[0].message.content)
+    response = client.chat.completions.create(
+        model="gpt-4.1",
+        messages=[{"role": "user", "content": analysis_prompt}],
+        response_format={"type": "json_object"},
+    )
+    analysis_result = json.loads(response.choices[0].message.content)
 
-                profile['_creator_profile'] = {
-                    'primary_category': analysis_result.get('niche_description', 'Facebook Group'),
-                    'content_types': 'Group posts',
-                    'creator_presence': 'group admin',
-                    'community_health': analysis_result.get('community_health', 'unknown'),
-                }
-                profile['_analysis_result'] = analysis_result
-                profile['_content_analyses'] = []
-                profile['_bio_evidence'] = {
-                    'niche_signals': {'niche_identified': True, 'niche_description': analysis_result.get('niche_description', '')},
-                    'in_person_events': {'evidence_found': False, 'event_types': []},
-                    'community_platforms': {'evidence_found': True, 'platforms': ['facebook_group']},
-                    'monetization': {'evidence_found': False, 'types': []},
-                }
-                profile['_caption_evidence'] = {
-                    'in_person_events': {'mention_count': 0},
-                    'community_platforms': {'mention_count': 1},
-                    'audience_engagement': {'question_count': 0},
-                    'authenticity_vulnerability': {'degree': 0.3, 'post_count': 0},
-                }
-                profile['_thumbnail_evidence'] = {
-                    'creator_visibility': {'visible_in_content': False, 'frequency': 'none', 'confidence': 0.0},
-                    'niche_consistency': {'consistent_theme': True, 'niche_description': analysis_result.get('niche_description', ''), 'confidence': 0.6},
-                    'event_promotion': {'evidence_found': False, 'post_count': 0, 'confidence': 0.0},
-                    'engagement_metrics': {'posts_above_threshold': 0, 'posts_below_threshold': 0, 'posts_hidden': 0, 'posts_analyzed': 0},
-                }
+    profile['_creator_profile'] = {
+        'primary_category': analysis_result.get('niche_description', 'Facebook Group'),
+        'content_types': 'Group posts',
+        'creator_presence': 'group admin',
+        'community_health': analysis_result.get('community_health', 'unknown'),
+    }
+    profile['_analysis_result'] = analysis_result
+    profile['_content_analyses'] = []
+    profile['_bio_evidence'] = {
+        'niche_signals': {'niche_identified': True, 'niche_description': analysis_result.get('niche_description', '')},
+        'in_person_events': {'evidence_found': False, 'event_types': []},
+        'community_platforms': {'evidence_found': True, 'platforms': ['facebook_group']},
+        'monetization': {'evidence_found': False, 'types': []},
+    }
+    profile['_caption_evidence'] = {
+        'in_person_events': {'mention_count': 0},
+        'community_platforms': {'mention_count': 1},
+        'audience_engagement': {'question_count': 0},
+        'authenticity_vulnerability': {'degree': 0.3, 'post_count': 0},
+    }
+    profile['_thumbnail_evidence'] = {
+        'creator_visibility': {'visible_in_content': False, 'frequency': 'none', 'confidence': 0.0},
+        'niche_consistency': {'consistent_theme': True, 'niche_description': analysis_result.get('niche_description', ''), 'confidence': 0.6},
+        'event_promotion': {'evidence_found': False, 'post_count': 0, 'confidence': 0.0},
+        'engagement_metrics': {'posts_above_threshold': 0, 'posts_below_threshold': 0, 'posts_hidden': 0, 'posts_analyzed': 0},
+    }
 
-                analyzed.append(profile)
-                run.increment_stage_progress('analysis', 'completed')
-                logger.info("%s: niche_description=%s", group_name, analysis_result.get('niche_description', '?'))
+    logger.info("[%s] Done — niche=%s", tag, analysis_result.get('niche_description', '?'))
+    return profile, None
 
-            except Exception as e:
-                logger.error("Error on %s: %s", group_name, e)
-                errors.append(f"{group_name}: {str(e)}")
-                run.increment_stage_progress('analysis', 'failed')
+
+class FacebookAnalysis(StageAdapter):
+    """
+    Facebook group analysis: group health + admin profile signals.
+    Processes up to ANALYSIS_CONCURRENCY profiles in parallel.
+    """
+    platform = 'facebook'
+    stage = 'analysis'
+    description = 'GPT-4.1 text analysis — group health, admin profile'
+    apis = ['OpenAI']
+
+    def estimate_cost(self, count: int) -> float:
+        return count * 0.10
+
+    def run(self, profiles, run) -> StageResult:
+        analyzed = []
+        errors = []
+
+        with ThreadPoolExecutor(max_workers=ANALYSIS_CONCURRENCY) as pool:
+            futures = {
+                pool.submit(_analyze_facebook_profile, p): p
+                for p in profiles
+            }
+            for future in as_completed(futures):
+                try:
+                    result, error = future.result()
+                    if error:
+                        errors.append(error)
+                        run.increment_stage_progress('analysis', 'failed')
+                    elif result:
+                        analyzed.append(result)
+                        run.increment_stage_progress('analysis', 'completed')
+                except Exception as e:
+                    p = futures[future]
+                    name = p.get('group_name', 'Unknown Group')
+                    logger.error("Error on %s: %s", name, e)
+                    errors.append(f"{name}: {str(e)}")
+                    run.increment_stage_progress('analysis', 'failed')
 
         return StageResult(
             profiles=analyzed,

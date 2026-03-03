@@ -59,6 +59,7 @@ def make_id():
 def _save_run_to_redis(run_data: dict):
     """Save a run dict to Redis via the Run model."""
     run = Run.__new__(Run)
+    run_data.setdefault('stage_timings', {})
     for k, v in run_data.items():
         setattr(run, k, v)
     run.save()
@@ -159,6 +160,14 @@ def seed_successful_run(session):
         'estimated_cost': 9.00,
         'actual_cost': 8.42,
         'stage_outputs': {},
+        'stage_timings': {
+            'discovery': {'started_at': (now - timedelta(hours=2)).isoformat(), 'finished_at': (now - timedelta(hours=1, minutes=55)).isoformat(), 'duration_s': 28.4, 'profiles_in': 0, 'profiles_out': 250},
+            'pre_screen': {'started_at': (now - timedelta(hours=1, minutes=55)).isoformat(), 'finished_at': (now - timedelta(hours=1, minutes=52)).isoformat(), 'duration_s': 185.2, 'profiles_in': 250, 'profiles_out': 180},
+            'enrichment': {'started_at': (now - timedelta(hours=1, minutes=52)).isoformat(), 'finished_at': (now - timedelta(hours=1, minutes=50)).isoformat(), 'duration_s': 92.1, 'profiles_in': 180, 'profiles_out': 170},
+            'analysis': {'started_at': (now - timedelta(hours=1, minutes=50)).isoformat(), 'finished_at': (now - timedelta(hours=1, minutes=48)).isoformat(), 'duration_s': 142.7, 'profiles_in': 170, 'profiles_out': 170},
+            'scoring': {'started_at': (now - timedelta(hours=1, minutes=48)).isoformat(), 'finished_at': (now - timedelta(hours=1, minutes=46)).isoformat(), 'duration_s': 95.3, 'profiles_in': 170, 'profiles_out': 155},
+            'crm_sync': {'started_at': (now - timedelta(hours=1, minutes=46)).isoformat(), 'finished_at': (now - timedelta(hours=1, minutes=45)).isoformat(), 'duration_s': 18.6, 'profiles_in': 155, 'profiles_out': 155},
+        },
     }
 
     # Redis

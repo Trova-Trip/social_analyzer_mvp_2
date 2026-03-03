@@ -9,7 +9,9 @@ and feeds the result to the next stage. Progress is tracked on the Run object.
 """
 import json
 import logging
+import time
 import traceback
+from datetime import datetime
 from typing import Dict, Type
 
 from app.models.run import Run
@@ -224,6 +226,8 @@ def run_pipeline(run_id: str, retry_from_stage: str = None):
 
         # Execute
         try:
+            stage_start = time.monotonic()
+            stage_started_at = datetime.now().isoformat()
             logger.info("Stage '%s' — %s — %d profiles in", stage_name, adapter.__class__.__name__, len(profiles))
             result: StageResult = adapter.run(profiles, run)
 
@@ -238,6 +242,18 @@ def run_pipeline(run_id: str, retry_from_stage: str = None):
             # Accumulate actual cost
             if result.cost > 0:
                 run.actual_cost = (run.actual_cost or 0) + result.cost
+
+            # Record stage timing
+            stage_duration = round(time.monotonic() - stage_start, 2)
+            if not run.stage_timings:
+                run.stage_timings = {}
+            run.stage_timings[stage_name] = {
+                'started_at': stage_started_at,
+                'finished_at': datetime.now().isoformat(),
+                'duration_s': stage_duration,
+                'profiles_in': 0 if stage_name == 'discovery' else len(profiles),
+                'profiles_out': len(result.profiles),
+            }
 
             # Update aggregate counters
             if stage_name == 'discovery':
@@ -278,8 +294,8 @@ def run_pipeline(run_id: str, retry_from_stage: str = None):
             except Exception:
                 logger.warning("Failed to checkpoint stage '%s' — continuing", stage_name)
 
-            logger.info("Stage '%s' done — %d profiles out (processed=%d, failed=%d, skipped=%d)",
-                        stage_name, len(profiles), result.processed, result.failed, result.skipped)
+            logger.info("Stage '%s' done in %.1fs — %d profiles out (processed=%d, failed=%d, skipped=%d)",
+                        stage_name, stage_duration, len(profiles), result.processed, result.failed, result.skipped)
 
             # Early exit if no profiles to process
             if not profiles and stage_name != 'crm_sync':

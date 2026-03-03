@@ -316,7 +316,8 @@ class TestToDict:
             'profiles_found', 'profiles_pre_screened', 'profiles_enriched',
             'profiles_scored', 'contacts_synced', 'duplicates_skipped',
             'bdr_assignment', 'errors', 'tier_distribution',
-            'summary', 'estimated_cost', 'actual_cost',
+            'summary', 'estimated_cost', 'actual_cost', 'stage_timings',
+            'stage_outputs',
         }
         assert set(d.keys()) == expected_keys
 
@@ -349,12 +350,12 @@ class TestToDict:
         assert d['profiles_found'] == 99
         assert d['summary'] == 'All done'
 
-    def test_stage_outputs_not_in_to_dict(self):
-        """stage_outputs is an internal field — it should NOT appear in to_dict()."""
+    def test_stage_outputs_in_to_dict(self):
+        """stage_outputs is included in to_dict() for checkpoint drill-down."""
         run = _make_run()
-        run.stage_outputs = {'discovery': {'key': 'value'}}
+        run.stage_outputs = {'discovery': [{'name': 'test'}]}
         d = run.to_dict()
-        assert 'stage_outputs' not in d
+        assert d['stage_outputs'] == {'discovery': [{'name': 'test'}]}
 
 
 # ── Save / persistence ───────────────────────────────────────────────────────

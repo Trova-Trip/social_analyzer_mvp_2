@@ -552,7 +552,7 @@ class TestGatherEvidence:
 
         mock_bio.assert_called_once_with('Bio text')
         mock_cap.assert_called_once_with([])
-        mock_thumb.assert_called_once_with([], [], 'contact-001')
+        mock_thumb.assert_called_once_with([], [], 'contact-001', '')
 
     def test_skips_items_without_thumbnail_url(self):
         """Items missing thumbnail_url are excluded from thumbnail list but still provide captions."""
@@ -672,7 +672,7 @@ class TestInstagramAnalysis:
 
         call_count = [0]
 
-        def analyze_side_effect(items, indices, cid):
+        def analyze_side_effect(items, indices, cid, tag=''):
             call_count[0] += 1
             if call_count[0] == 1:
                 raise Exception("API timeout")
