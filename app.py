@@ -1170,5 +1170,185 @@ def get_platform_jobs(platform):
     return jsonify(jobs)
 
 
+
+# ── Enrollment dispatcher page & API ─────────────────────────────────────────
+
+@app.route('/monitor/enrollment')
+def monitor_enrollment():
+    return render_template('monitor_enrollment.html', active_page='enrollment')
+
+
+@app.route('/api/enrollment/config', methods=['GET'])
+def get_enrollment_config():
+    """Return current cadence, weights, and max-per-day settings."""
+    from tasks import get_sequence_cadence, get_outreach_weights, get_max_per_day, ENROLLMENT_INBOXES
+    return jsonify({
+        'cadence':     get_sequence_cadence(),
+        'weights':     get_outreach_weights(),
+        'max_per_day': get_max_per_day(),
+        'inboxes':     ENROLLMENT_INBOXES,
+    })
+
+
+@app.route('/api/enrollment/config', methods=['PUT'])
+def update_enrollment_config():
+    """Update cadence, weights, and/or max_per_day in Redis."""
+    from tasks import (set_sequence_cadence, set_outreach_weights, set_max_per_day,
+                       get_sequence_cadence, get_outreach_weights, get_max_per_day)
+    data    = request.get_json() or {}
+    updated = {}
+
+    if 'cadence' in data:
+        cadence = data['cadence']
+        if not isinstance(cadence, list) or not all(isinstance(x, int) for x in cadence):
+            return jsonify({'error': 'cadence must be a list of integers'}), 400
+        set_sequence_cadence(cadence)
+        updated['cadence'] = cadence
+
+    if 'weights' in data:
+        weights = data['weights']
+        if not isinstance(weights, dict):
+            return jsonify({'error': 'weights must be an object'}), 400
+        set_outreach_weights(weights)
+        updated['weights'] = weights
+
+    if 'max_per_day' in data:
+        try:
+            mpd = int(data['max_per_day'])
+        except (TypeError, ValueError):
+            return jsonify({'error': 'max_per_day must be an integer'}), 400
+        set_max_per_day(mpd)
+        updated['max_per_day'] = mpd
+
+    return jsonify({'status': 'ok', 'updated': updated,
+                    'current': {
+                        'cadence':     get_sequence_cadence(),
+                        'weights':     get_outreach_weights(),
+                        'max_per_day': get_max_per_day(),
+                    }})
+
+
+@app.route('/api/enrollment/queue/stats', methods=['GET'])
+def get_enrollment_queue_stats():
+    """
+    Return live stats: active count, queued count (by outreach type),
+    and last-run summary from Redis.
+    """
+    from tasks import hubspot_search_contacts_all, ENROLLMENT_INBOXES
+
+    # Last run summary from Redis
+    last_run = None
+    try:
+        raw = r.get('enrollment:last_run')
+        if raw:
+            last_run = json.loads(raw)
+    except Exception:
+        pass
+
+    # Queued breakdown by outreach type
+    queued_contacts = hubspot_search_contacts_all(
+        filters=[{'propertyName': 'reply_sequence_queue_status',
+                  'operator': 'EQ', 'value': 'queued'}],
+        properties=['outreach_segment'],
+    )
+    by_type = {}
+    for c in queued_contacts:
+        otype = (c.get('properties', {}).get('outreach_segment', '') or 'unknown').strip()
+        by_type[otype] = by_type.get(otype, 0) + 1
+
+    # Active count
+    active_contacts = hubspot_search_contacts_all(
+        filters=[{'propertyName': 'reply_sequence_queue_status',
+                  'operator': 'EQ', 'value': 'active'}],
+        properties=['reply_io_sequence'],
+    )
+    active_by_inbox = {}
+    for c in active_contacts:
+        inbox = (c.get('properties', {}).get('reply_io_sequence', '') or 'unknown').strip()
+        active_by_inbox[inbox] = active_by_inbox.get(inbox, 0) + 1
+
+    return jsonify({
+        'active_total':    len(active_contacts),
+        'active_by_inbox': active_by_inbox,
+        'queued_total':    len(queued_contacts),
+        'queued_by_type':  by_type,
+        'last_run':        last_run,
+        'inboxes':         list(ENROLLMENT_INBOXES.keys()),
+    })
+
+
+@app.route('/api/enrollment/capacity', methods=['GET'])
+def get_enrollment_capacity():
+    """
+    Return today's projected capacity per inbox, accounting for active contacts.
+    """
+    from tasks import (hubspot_search_contacts_all, build_committed_schedule,
+                       available_slots_for_inbox, get_sequence_cadence,
+                       get_max_per_day, ENROLLMENT_INBOXES)
+    from datetime import date
+
+    today   = date.today()
+    cadence = get_sequence_cadence()
+    mpd     = get_max_per_day()
+
+    active_contacts = hubspot_search_contacts_all(
+        filters=[{'propertyName': 'reply_sequence_queue_status',
+                  'operator': 'EQ', 'value': 'active'}],
+        properties=['reply_io_sequence', 'recent_reply_sequence_enrolled_date'],
+    )
+    committed = build_committed_schedule(active_contacts, cadence)
+
+    capacity = {}
+    for inbox in ENROLLMENT_INBOXES:
+        avail = available_slots_for_inbox(inbox, today, committed, cadence, mpd)
+        # 7-day projection
+        daily = []
+        for offset in range(7):
+            from tasks import next_business_day
+            from datetime import timedelta
+            proj_date = today + timedelta(days=offset)
+            from tasks import is_business_day
+            is_bday = is_business_day(proj_date)
+            committed_on_day = committed.get(inbox, {}).get(proj_date.isoformat(), 0)
+            daily.append({
+                'date':        proj_date.isoformat(),
+                'is_business': is_bday,
+                'committed':   committed_on_day,
+                'available':   max(0, mpd - committed_on_day) if is_bday else 0,
+            })
+        capacity[inbox] = {
+            'available_today': avail,
+            'max_per_day':     mpd,
+            'daily_projection': daily,
+        }
+
+    return jsonify({'date': today.isoformat(), 'capacity': capacity})
+
+
+@app.route('/api/enrollment/dispatch', methods=['POST'])
+def trigger_enrollment_dispatch():
+    """Manually trigger the enrollment dispatcher task."""
+    from tasks import run_enrollment_dispatcher
+    task = run_enrollment_dispatcher.apply_async()
+    return jsonify({'status': 'ok', 'task_id': task.id,
+                    'message': 'Enrollment dispatcher triggered'}), 200
+
+
+@app.route('/api/enrollment/run_history', methods=['GET'])
+def get_enrollment_run_history():
+    """Return the last 30 dispatcher run summaries from Redis."""
+    try:
+        raws = r.lrange('enrollment:run_history', 0, 29)
+        history = []
+        for raw in raws:
+            try:
+                history.append(json.loads(raw))
+            except Exception:
+                pass
+        return jsonify(history)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.getenv('PORT', 8080)))
