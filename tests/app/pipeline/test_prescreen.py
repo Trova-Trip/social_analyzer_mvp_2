@@ -921,9 +921,11 @@ class TestIntegration:
         assert len(result.profiles) == 1
         assert result.skipped == 2
         assert len(result.meta['filtered']) == 2
-        assert result.meta['filtered'][0]['type'] == 'no_content'
-        assert result.meta['filtered'][1]['type'] == 'disqualified'
-        assert result.meta['filtered'][1]['reason'] == 'Stale posts'
+        # Order is non-deterministic (parallel execution), so check by type
+        filter_types = {f['type'] for f in result.meta['filtered']}
+        assert filter_types == {'no_content', 'disqualified'}
+        disqualified = [f for f in result.meta['filtered'] if f['type'] == 'disqualified']
+        assert disqualified[0]['reason'] == 'Stale posts'
 
     def test_patreon_combined_nsfw_and_patron_filter(self, make_run):
         """NSFW and patron count filters work together correctly."""

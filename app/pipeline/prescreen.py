@@ -248,8 +248,9 @@ Respond ONLY with JSON:
 
 # ── Adapters ──────────────────────────────────────────────────────────────────
 
-# Max profiles to pre-screen concurrently (InsightIQ fetch + GPT-4.1 vision).
-PRESCREEN_CONCURRENCY = 10
+# Max profiles to pre-screen concurrently.
+# Limited by InsightIQ rate limits on content fetch (429s at 10 concurrent).
+PRESCREEN_CONCURRENCY = 3
 
 
 def _prescreen_instagram_profile(profile):
