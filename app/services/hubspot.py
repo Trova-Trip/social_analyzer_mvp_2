@@ -140,6 +140,63 @@ def send_to_hubspot(
     logger.info("HubSpot response: %d", response.status_code)
 
 
+def check_existing_contacts(emails: List[str]) -> set:
+    """Check which emails already exist in HubSpot.
+
+    Uses batch/read with idProperty=email — 100 per call at general rate limit.
+    Returns a set of emails that already exist as contacts.
+    """
+    if not HUBSPOT_API_KEY or not emails:
+        return set()
+
+    existing = set()
+    from app.services.circuit_breaker import get_breaker
+    cb = get_breaker('hubspot')
+
+    for i in range(0, len(emails), 100):
+        batch = emails[i:i + 100]
+        try:
+            resp = cb.call(
+                requests.post,
+                f"{HUBSPOT_API_URL}/crm/v3/objects/contacts/batch/read",
+                headers={
+                    'Authorization': f'Bearer {HUBSPOT_API_KEY}',
+                    'Content-Type': 'application/json',
+                },
+                json={
+                    'inputs': [{'id': email} for email in batch],
+                    'idProperty': 'email',
+                    'properties': ['email'],
+                },
+                timeout=15,
+            )
+
+            if resp.status_code == 200:
+                for result in resp.json().get('results', []):
+                    email = result.get('properties', {}).get('email', '').lower()
+                    if email:
+                        existing.add(email)
+                logger.info("HubSpot dedup batch %d: %d/%d already exist",
+                            (i // 100) + 1, len(existing), len(batch))
+            elif resp.status_code == 207:
+                # Partial success — some found, some not
+                for result in resp.json().get('results', []):
+                    email = result.get('properties', {}).get('email', '').lower()
+                    if email:
+                        existing.add(email)
+            else:
+                logger.warning("HubSpot dedup batch error: %d — %s",
+                               resp.status_code, resp.text[:200])
+        except Exception as e:
+            logger.error("HubSpot dedup exception: %s", e)
+
+        if i + 100 < len(emails):
+            time.sleep(0.1)
+
+    logger.info("HubSpot dedup: %d/%d emails already in CRM", len(existing), len(emails))
+    return existing
+
+
 def import_profiles_to_hubspot(profiles: List[Dict], job_id: str) -> Dict:
     """Import standardized profiles to HubSpot via batch contacts API."""
     if not HUBSPOT_API_KEY:
