@@ -11,7 +11,6 @@ from app.config import BDR_OWNER_IDS
 from app.services.hubspot import import_profiles_to_hubspot
 from app.services.apify import (
     assign_bdr_round_robin,
-    update_discovery_job_status,
     standardize_instagram_profiles,
     standardize_patreon_profiles,
     standardize_facebook_profiles,

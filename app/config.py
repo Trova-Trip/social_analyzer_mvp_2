@@ -72,16 +72,3 @@ PIPELINE_STAGES = [
     'scoring',
     'crm_sync',
 ]
-
-# ── Run status values ─────────────────────────────────────────────────────────
-RUN_STATUSES = [
-    'queued',
-    'discovering',
-    'pre_screening',
-    'enriching',
-    'analyzing',
-    'scoring',
-    'syncing',
-    'completed',
-    'failed',
-]
