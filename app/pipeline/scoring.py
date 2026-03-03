@@ -10,6 +10,7 @@ All adapters output: lead_score (float), priority_tier (str), section_scores (di
 import os
 import json
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, List, Any
 
 import yaml
@@ -406,10 +407,144 @@ RESPOND ONLY with JSON:
 
 # ── Adapters ──────────────────────────────────────────────────────────────────
 
+# Max profiles to score concurrently (1 GPT call each + optional R2 cache write).
+SCORING_CONCURRENCY = 10
+
+
+def _score_instagram_profile(profile):
+    """Score a single Instagram profile. Thread-safe — no run mutations."""
+    from app.services.r2 import save_analysis_cache
+    from app.services.openai_client import extract_first_names_from_instagram_profile
+
+    cfg = load_scoring_config()
+    travel_floor = cfg.get('travel_experience_floor', 0.50)
+
+    profile_url = profile.get('profile_url') or profile.get('instagram_handle') or profile.get('url', '')
+    contact_id = profile.get('contact_id') or profile.get('id', '')
+    tag = profile_url.split('/')[-1] if '/' in profile_url else profile_url
+
+    lead_analysis = generate_evidence_based_score(
+        bio_evidence=profile['_bio_evidence'],
+        caption_evidence=profile['_caption_evidence'],
+        thumbnail_evidence=profile['_thumbnail_evidence'],
+        content_analyses=profile.get('_content_analyses', []),
+        creator_profile=profile.get('_creator_profile', {}),
+        follower_count=profile.get('follower_count', 0),
+    )
+
+    # Travel experience boost
+    if profile.get('_has_travel_experience') and lead_analysis['lead_score'] < travel_floor:
+        lead_analysis['lead_score'] = travel_floor
+        lead_analysis['score_reasoning'] += " | TRAVEL EXPERIENCE BOOST"
+
+    # Extract first name
+    social_data = profile.get('_social_data', {})
+    _info = social_data.get('data', [{}])[0].get('profile', {}) if social_data else {}
+    bio = profile.get('bio', '')
+    first_name = extract_first_names_from_instagram_profile(
+        _info.get('platform_username', ''),
+        _info.get('full_name', ''),
+        bio or _info.get('introduction', ''),
+        profile.get('_content_analyses', []),
+    )
+
+    # Cache for rescoring
+    if contact_id:
+        save_analysis_cache(contact_id, {
+            'contact_id': contact_id, 'profile_url': profile_url,
+            'bio': bio, 'follower_count': profile.get('follower_count', 0),
+            'content_analyses': profile.get('_content_analyses', []),
+            'creator_profile': profile.get('_creator_profile', {}),
+            'bio_evidence': profile['_bio_evidence'],
+            'caption_evidence': profile['_caption_evidence'],
+            'thumbnail_evidence': profile['_thumbnail_evidence'],
+            'has_travel_experience': profile.get('_has_travel_experience', False),
+            'first_name': first_name,
+        })
+
+    profile['_lead_analysis'] = lead_analysis
+    profile['_first_name'] = first_name
+
+    tier = lead_analysis.get('priority_tier', 'low_priority_review')
+    logger.info("[%s] score=%.3f (%s)", tag, lead_analysis['lead_score'], tier)
+    return profile, None
+
+
+def _score_patreon_profile(profile):
+    """Score a single Patreon profile. Thread-safe — no run mutations."""
+    creator_name = profile.get('creator_name') or profile.get('name', 'Unknown')
+    tag = creator_name.replace(' ', '_')[:20]
+
+    lead_analysis = generate_evidence_based_score(
+        bio_evidence=profile.get('_bio_evidence', {}),
+        caption_evidence=profile.get('_caption_evidence', {}),
+        thumbnail_evidence=profile.get('_thumbnail_evidence', {}),
+        content_analyses=profile.get('_content_analyses', []),
+        creator_profile=profile.get('_creator_profile', {}),
+        follower_count=int(profile.get('patron_count') or profile.get('total_members') or 0),
+    )
+
+    profile['_lead_analysis'] = lead_analysis
+
+    tier = lead_analysis.get('priority_tier', 'low_priority_review')
+    logger.info("[%s] score=%.3f (%s)", tag, lead_analysis['lead_score'], tier)
+    return profile, None
+
+
+def _score_facebook_profile(profile):
+    """Score a single Facebook profile. Thread-safe — no run mutations."""
+    group_name = profile.get('group_name', 'Unknown Group')
+    tag = group_name.replace(' ', '_')[:25]
+
+    lead_analysis = generate_evidence_based_score(
+        bio_evidence=profile.get('_bio_evidence', {}),
+        caption_evidence=profile.get('_caption_evidence', {}),
+        thumbnail_evidence=profile.get('_thumbnail_evidence', {}),
+        content_analyses=profile.get('_content_analyses', []),
+        creator_profile=profile.get('_creator_profile', {}),
+        follower_count=profile.get('member_count', 0),
+    )
+
+    profile['_lead_analysis'] = lead_analysis
+
+    tier = lead_analysis.get('priority_tier', 'low_priority_review')
+    logger.info("[%s] score=%.3f (%s)", tag, lead_analysis['lead_score'], tier)
+    return profile, None
+
+
+def _run_scoring_pool(score_fn, profiles, run, get_name_fn):
+    """Shared scoring loop: run score_fn in parallel, collect results."""
+    scored = []
+    errors = []
+
+    with ThreadPoolExecutor(max_workers=SCORING_CONCURRENCY) as pool:
+        futures = {pool.submit(score_fn, p): p for p in profiles}
+        for future in as_completed(futures):
+            try:
+                result, error = future.result()
+                if error:
+                    errors.append(error)
+                    run.increment_stage_progress('scoring', 'failed')
+                elif result:
+                    scored.append(result)
+                    tier = result.get('_lead_analysis', {}).get('priority_tier', 'low_priority_review')
+                    if tier in run.tier_distribution:
+                        run.tier_distribution[tier] += 1
+                    run.increment_stage_progress('scoring', 'completed')
+            except Exception as e:
+                p = futures[future]
+                name = get_name_fn(p)
+                logger.error("[%s] Error: %s", name, e)
+                errors.append(str(e))
+                run.increment_stage_progress('scoring', 'failed')
+
+    return scored, errors
+
+
 class InstagramScoring(StageAdapter):
     """
     IG scoring: 5-dimension evidence-based scoring.
-    Dimensions: niche, authenticity, monetization, community, engagement.
+    Processes up to SCORING_CONCURRENCY profiles in parallel.
     """
     platform = 'instagram'
     stage = 'scoring'
@@ -424,76 +559,10 @@ class InstagramScoring(StageAdapter):
         return count * 0.02
 
     def run(self, profiles, run) -> StageResult:
-        from app.services.r2 import save_analysis_cache
-        from app.services.openai_client import extract_first_names_from_instagram_profile
-
-        cfg = load_scoring_config()
-        travel_floor = cfg.get('travel_experience_floor', 0.50)
-
-        scored = []
-        errors = []
-
-        for profile in profiles:
-            profile_url = profile.get('profile_url') or profile.get('instagram_handle') or profile.get('url', '')
-            contact_id = profile.get('contact_id') or profile.get('id', '')
-
-            try:
-                lead_analysis = generate_evidence_based_score(
-                    bio_evidence=profile['_bio_evidence'],
-                    caption_evidence=profile['_caption_evidence'],
-                    thumbnail_evidence=profile['_thumbnail_evidence'],
-                    content_analyses=profile.get('_content_analyses', []),
-                    creator_profile=profile.get('_creator_profile', {}),
-                    follower_count=profile.get('follower_count', 0),
-                )
-
-                # Travel experience boost
-                if profile.get('_has_travel_experience') and lead_analysis['lead_score'] < travel_floor:
-                    lead_analysis['lead_score'] = travel_floor
-                    lead_analysis['score_reasoning'] += " | TRAVEL EXPERIENCE BOOST"
-
-                # Extract first name
-                social_data = profile.get('_social_data', {})
-                _info = social_data.get('data', [{}])[0].get('profile', {}) if social_data else {}
-                bio = profile.get('bio', '')
-                first_name = extract_first_names_from_instagram_profile(
-                    _info.get('platform_username', ''),
-                    _info.get('full_name', ''),
-                    bio or _info.get('introduction', ''),
-                    profile.get('_content_analyses', []),
-                )
-
-                # Cache for rescoring
-                if contact_id:
-                    save_analysis_cache(contact_id, {
-                        'contact_id': contact_id, 'profile_url': profile_url,
-                        'bio': bio, 'follower_count': profile.get('follower_count', 0),
-                        'content_analyses': profile.get('_content_analyses', []),
-                        'creator_profile': profile.get('_creator_profile', {}),
-                        'bio_evidence': profile['_bio_evidence'],
-                        'caption_evidence': profile['_caption_evidence'],
-                        'thumbnail_evidence': profile['_thumbnail_evidence'],
-                        'has_travel_experience': profile.get('_has_travel_experience', False),
-                        'first_name': first_name,
-                    })
-
-                profile['_lead_analysis'] = lead_analysis
-                profile['_first_name'] = first_name
-                scored.append(profile)
-
-                # Update tier distribution
-                tier = lead_analysis.get('priority_tier', 'low_priority_review')
-                if tier in run.tier_distribution:
-                    run.tier_distribution[tier] += 1
-
-                run.increment_stage_progress('scoring', 'completed')
-                logger.info("%s: score=%.3f (%s)", profile_url, lead_analysis['lead_score'], tier)
-
-            except Exception as e:
-                logger.error("Error on %s: %s", profile_url, e)
-                errors.append(str(e))
-                run.increment_stage_progress('scoring', 'failed')
-
+        scored, errors = _run_scoring_pool(
+            _score_instagram_profile, profiles, run,
+            lambda p: p.get('profile_url') or p.get('instagram_handle') or p.get('url', ''),
+        )
         return StageResult(
             profiles=scored,
             processed=len(profiles),
@@ -506,7 +575,7 @@ class InstagramScoring(StageAdapter):
 class PatreonScoring(StageAdapter):
     """
     Patreon scoring: same 5 dimensions but weighted for text-based creators.
-    No visual content, so engagement_metrics penalties are zeroed out.
+    Processes up to SCORING_CONCURRENCY profiles in parallel.
     """
     platform = 'patreon'
     stage = 'scoring'
@@ -517,37 +586,10 @@ class PatreonScoring(StageAdapter):
         return count * 0.02
 
     def run(self, profiles, run) -> StageResult:
-        scored = []
-        errors = []
-
-        for profile in profiles:
-            creator_name = profile.get('creator_name') or profile.get('name', 'Unknown')
-
-            try:
-                lead_analysis = generate_evidence_based_score(
-                    bio_evidence=profile.get('_bio_evidence', {}),
-                    caption_evidence=profile.get('_caption_evidence', {}),
-                    thumbnail_evidence=profile.get('_thumbnail_evidence', {}),
-                    content_analyses=profile.get('_content_analyses', []),
-                    creator_profile=profile.get('_creator_profile', {}),
-                    follower_count=int(profile.get('patron_count') or profile.get('total_members') or 0),
-                )
-
-                profile['_lead_analysis'] = lead_analysis
-                scored.append(profile)
-
-                tier = lead_analysis.get('priority_tier', 'low_priority_review')
-                if tier in run.tier_distribution:
-                    run.tier_distribution[tier] += 1
-
-                run.increment_stage_progress('scoring', 'completed')
-                logger.info("%s: score=%.3f (%s)", creator_name, lead_analysis['lead_score'], tier)
-
-            except Exception as e:
-                logger.error("Error on %s: %s", creator_name, e)
-                errors.append(str(e))
-                run.increment_stage_progress('scoring', 'failed')
-
+        scored, errors = _run_scoring_pool(
+            _score_patreon_profile, profiles, run,
+            lambda p: p.get('creator_name') or p.get('name', 'Unknown'),
+        )
         return StageResult(
             profiles=scored,
             processed=len(profiles),
@@ -560,6 +602,7 @@ class PatreonScoring(StageAdapter):
 class FacebookScoring(StageAdapter):
     """
     Facebook scoring: same 5 dimensions, tuned for group admin evaluation.
+    Processes up to SCORING_CONCURRENCY profiles in parallel.
     """
     platform = 'facebook'
     stage = 'scoring'
@@ -570,37 +613,10 @@ class FacebookScoring(StageAdapter):
         return count * 0.02
 
     def run(self, profiles, run) -> StageResult:
-        scored = []
-        errors = []
-
-        for profile in profiles:
-            group_name = profile.get('group_name', 'Unknown Group')
-
-            try:
-                lead_analysis = generate_evidence_based_score(
-                    bio_evidence=profile.get('_bio_evidence', {}),
-                    caption_evidence=profile.get('_caption_evidence', {}),
-                    thumbnail_evidence=profile.get('_thumbnail_evidence', {}),
-                    content_analyses=profile.get('_content_analyses', []),
-                    creator_profile=profile.get('_creator_profile', {}),
-                    follower_count=profile.get('member_count', 0),
-                )
-
-                profile['_lead_analysis'] = lead_analysis
-                scored.append(profile)
-
-                tier = lead_analysis.get('priority_tier', 'low_priority_review')
-                if tier in run.tier_distribution:
-                    run.tier_distribution[tier] += 1
-
-                run.increment_stage_progress('scoring', 'completed')
-                logger.info("%s: score=%.3f (%s)", group_name, lead_analysis['lead_score'], tier)
-
-            except Exception as e:
-                logger.error("Error on %s: %s", group_name, e)
-                errors.append(str(e))
-                run.increment_stage_progress('scoring', 'failed')
-
+        scored, errors = _run_scoring_pool(
+            _score_facebook_profile, profiles, run,
+            lambda p: p.get('group_name', 'Unknown Group'),
+        )
         return StageResult(
             profiles=scored,
             processed=len(profiles),

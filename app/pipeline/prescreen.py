@@ -8,6 +8,7 @@ Facebook:  Member count + visibility + posts/month.
 import json
 import logging
 import base64
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from io import BytesIO
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Any, Tuple
@@ -247,13 +248,74 @@ Respond ONLY with JSON:
 
 # ── Adapters ──────────────────────────────────────────────────────────────────
 
+# Max profiles to pre-screen concurrently (InsightIQ fetch + GPT-4.1 vision).
+PRESCREEN_CONCURRENCY = 10
+
+
+def _prescreen_instagram_profile(profile):
+    """Pre-screen a single Instagram profile. Thread-safe — no run mutations.
+
+    Returns: ('passed', profile) | ('filtered', filter_dict) | ('error', error_str)
+    """
+    from app.services.insightiq import fetch_social_content, filter_content_items
+
+    profile_url = profile.get('profile_url') or profile.get('instagram_handle') or profile.get('url', '')
+    bio = profile.get('bio', '')
+    follower_count = profile.get('follower_count', 0)
+    tag = profile_url.split('/')[-1] if '/' in profile_url else profile_url
+
+    # Fetch content
+    social_data = fetch_social_content(profile_url)
+    content_items = social_data.get('data', [])
+    if not content_items:
+        return 'filtered', {'profile': profile_url, 'reason': 'No content items found', 'type': 'no_content'}
+
+    filtered_items = filter_content_items(content_items)
+    if not filtered_items:
+        return 'filtered', {'profile': profile_url, 'reason': 'All content items filtered out', 'type': 'no_content'}
+
+    # Post frequency check
+    should_disqualify, reason = check_post_frequency(filtered_items)
+    if should_disqualify:
+        logger.info("[%s] DISQUALIFIED — %s", tag, reason)
+        profile['_prescreen_result'] = 'disqualified'
+        profile['_prescreen_reason'] = reason
+        profile['_prescreen_score'] = 0.15
+        return 'filtered', {'profile': profile_url, 'reason': reason, 'type': 'disqualified'}
+
+    # GPT-4.1 snapshot screen
+    profile_info = social_data.get('data', [{}])[0].get('profile', {})
+    profile_data = {
+        'username': profile_info.get('platform_username', 'Unknown'),
+        'bio': bio or 'Bio not provided',
+        'follower_count': follower_count or profile_info.get('follower_count', 'N/A'),
+        'image_url': profile_info.get('image_url', ''),
+    }
+    snapshot = create_profile_snapshot(profile_data, filtered_items)
+    screen_result = pre_screen_profile(snapshot, profile_data)
+
+    if screen_result.get('decision') == 'reject':
+        logger.info("[%s] REJECTED — %s", tag, screen_result.get('reasoning'))
+        profile['_prescreen_result'] = 'rejected'
+        profile['_prescreen_reason'] = screen_result.get('reasoning', '')
+        profile['_prescreen_score'] = 0.20
+        return 'filtered', {'profile': profile_url, 'reason': screen_result.get('reasoning', ''), 'type': 'rejected'}
+
+    # Passed — attach content for downstream stages
+    profile['_content_items'] = filtered_items
+    profile['_social_data'] = social_data
+    profile['_selected_indices'] = screen_result.get('selected_content_indices', [0, 1, 2])
+    profile['_profile_data'] = profile_data
+    profile['_has_travel_experience'] = check_for_travel_experience(bio, filtered_items)
+
+    logger.info("[%s] PASSED", tag)
+    return 'passed', profile
+
+
 class InstagramPrescreen(StageAdapter):
     """
     IG pre-screen: fetch content → post frequency check → GPT-4.1 snapshot.
-
-    NOTE: This adapter fetches content from InsightIQ because pre-screening
-    needs the content items. The fetched content is attached to each profile
-    dict as '_content_items' for downstream stages to reuse.
+    Processes up to PRESCREEN_CONCURRENCY profiles in parallel.
     """
     platform = 'instagram'
     stage = 'pre_screen'
@@ -264,78 +326,31 @@ class InstagramPrescreen(StageAdapter):
         return count * 0.05
 
     def run(self, profiles, run) -> StageResult:
-        from app.services.insightiq import fetch_social_content, filter_content_items
-
         passed = []
         errors = []
         filtered = []
         skipped = 0
 
-        for i, profile in enumerate(profiles):
-            profile_url = profile.get('profile_url') or profile.get('instagram_handle') or profile.get('url', '')
-            bio = profile.get('bio', '')
-            follower_count = profile.get('follower_count', 0)
-
-            try:
-                # Fetch content
-                social_data = fetch_social_content(profile_url)
-                content_items = social_data.get('data', [])
-                if not content_items:
-                    filtered.append({'profile': profile_url, 'reason': 'No content items found', 'type': 'no_content'})
-                    skipped += 1
-                    continue
-
-                filtered_items = filter_content_items(content_items)
-                if not filtered_items:
-                    filtered.append({'profile': profile_url, 'reason': 'All content items filtered out', 'type': 'no_content'})
-                    skipped += 1
-                    continue
-
-                # Post frequency check
-                should_disqualify, reason = check_post_frequency(filtered_items)
-                if should_disqualify:
-                    logger.info("%s: DISQUALIFIED - %s", profile_url, reason)
-                    profile['_prescreen_result'] = 'disqualified'
-                    profile['_prescreen_reason'] = reason
-                    profile['_prescreen_score'] = 0.15
-                    filtered.append({'profile': profile_url, 'reason': reason, 'type': 'disqualified'})
-                    skipped += 1
-                    continue
-
-                # GPT-4.1 snapshot screen
-                profile_info = social_data.get('data', [{}])[0].get('profile', {})
-                profile_data = {
-                    'username': profile_info.get('platform_username', 'Unknown'),
-                    'bio': bio or 'Bio not provided',
-                    'follower_count': follower_count or profile_info.get('follower_count', 'N/A'),
-                    'image_url': profile_info.get('image_url', ''),
-                }
-                snapshot = create_profile_snapshot(profile_data, filtered_items)
-                screen_result = pre_screen_profile(snapshot, profile_data)
-
-                if screen_result.get('decision') == 'reject':
-                    logger.info("%s: REJECTED - %s", profile_url, screen_result.get('reasoning'))
-                    profile['_prescreen_result'] = 'rejected'
-                    profile['_prescreen_reason'] = screen_result.get('reasoning', '')
-                    profile['_prescreen_score'] = 0.20
-                    filtered.append({'profile': profile_url, 'reason': screen_result.get('reasoning', ''), 'type': 'rejected'})
-                    skipped += 1
-                    continue
-
-                # Passed — attach content for downstream stages
-                profile['_content_items'] = filtered_items
-                profile['_social_data'] = social_data
-                profile['_selected_indices'] = screen_result.get('selected_content_indices', [0, 1, 2])
-                profile['_profile_data'] = profile_data
-                profile['_has_travel_experience'] = check_for_travel_experience(bio, filtered_items)
-                passed.append(profile)
-
-                run.increment_stage_progress('pre_screen', 'completed')
-
-            except Exception as e:
-                logger.error("Error on %s: %s", profile_url, e)
-                errors.append(f"{profile_url}: {str(e)}")
-                run.increment_stage_progress('pre_screen', 'failed')
+        with ThreadPoolExecutor(max_workers=PRESCREEN_CONCURRENCY) as pool:
+            futures = {
+                pool.submit(_prescreen_instagram_profile, p): p
+                for p in profiles
+            }
+            for future in as_completed(futures):
+                try:
+                    outcome, data = future.result()
+                    if outcome == 'passed':
+                        passed.append(data)
+                        run.increment_stage_progress('pre_screen', 'completed')
+                    elif outcome == 'filtered':
+                        filtered.append(data)
+                        skipped += 1
+                except Exception as e:
+                    p = futures[future]
+                    url = p.get('profile_url') or p.get('instagram_handle') or p.get('url', '')
+                    logger.error("[%s] Error: %s", url, e)
+                    errors.append(f"{url}: {str(e)}")
+                    run.increment_stage_progress('pre_screen', 'failed')
 
         if filtered:
             logger.info("Pre-screen: %d passed, %d filtered out of %d", len(passed), len(filtered), len(profiles))
