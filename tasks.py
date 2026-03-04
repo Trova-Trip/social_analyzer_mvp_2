@@ -5531,6 +5531,16 @@ ENROLLMENT_INBOXES = {
     'Ryan':    '583796152',
 }
 
+# ── Inbox outreach-type constraints ──────────────────────────────────────────
+# Only Kendall handles interest_check and self_service.
+# All inboxes handle schedule_call.
+INBOX_ALLOWED_TYPES = {
+    'Dom':     ['schedule_call'],
+    'Jenn':    ['schedule_call'],
+    'Kendall': ['schedule_call', 'interest_check', 'self_service'],
+    'Ryan':    ['schedule_call'],
+}
+
 # ── Default configuration (stored / overridden in Redis) ─────────────────────
 _DEFAULT_CADENCE  = [0, 2, 4, 7, 11]            # calendar-day offsets
 _DEFAULT_WEIGHTS  = {'schedule_call': 3, 'interest_check': 2, 'self_service': 1}
@@ -5794,15 +5804,22 @@ def available_slots_for_inbox(inbox_name: str, enrollment_date: date,
 
 
 def best_inbox_for_enrollment(enrollment_date: date, committed: dict,
-                               cadence: list, max_per_day: int) -> Optional[str]:
+                               cadence: list, max_per_day: int,
+                               outreach_type: str = '') -> Optional[str]:
     """
-    Pick the inbox with the highest minimum available slots across all cadence days.
-    Returns None if all inboxes are at capacity.
+    Pick the inbox with the highest minimum available slots across all cadence days,
+    filtered to inboxes that are allowed to handle the given outreach_type.
+    Returns None if no eligible inbox has capacity.
     """
     best_inbox = None
     best_avail = 0
 
     for inbox_name in ENROLLMENT_INBOXES:
+        # Skip inboxes not permitted for this outreach type
+        allowed = INBOX_ALLOWED_TYPES.get(inbox_name, ['schedule_call'])
+        if outreach_type and outreach_type not in allowed:
+            continue
+
         avail = available_slots_for_inbox(
             inbox_name, enrollment_date, committed, cadence, max_per_day
         )
@@ -5810,7 +5827,7 @@ def best_inbox_for_enrollment(enrollment_date: date, committed: dict,
             best_avail = avail
             best_inbox = inbox_name
 
-    return best_inbox  # None if best_avail == 0
+    return best_inbox  # None if best_avail == 0 or no eligible inbox
 
 
 def update_committed_for_enrollment(inbox_name: str, enrollment_date: date,
@@ -6005,6 +6022,7 @@ def run_enrollment_dispatcher(self):
                 committed=committed,
                 cadence=cadence,
                 max_per_day=max_per_day,
+                outreach_type=otype,
             )
             if not inbox_name:
                 print(f"[DISPATCHER] No capacity left — stopping early "
