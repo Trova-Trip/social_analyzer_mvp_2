@@ -51,9 +51,8 @@ class TestInstagramCrmSync:
         assert adapter.estimate_cost(100) == 0.0
         assert adapter.estimate_cost(9999) == 0.0
 
-    @patch('app.pipeline.crm.time.sleep')
     @patch('app.pipeline.crm.send_to_hubspot')
-    def test_run_sends_webhook_per_profile(self, mock_webhook, mock_sleep, make_run):
+    def test_run_sends_webhook_per_profile(self, mock_webhook, make_run):
         """Each profile triggers a separate webhook call."""
         profiles = [
             {
@@ -83,9 +82,8 @@ class TestInstagramCrmSync:
         assert result.meta['synced'] == 2
         assert run.contacts_synced == 2
 
-    @patch('app.pipeline.crm.time.sleep')
     @patch('app.pipeline.crm.send_to_hubspot')
-    def test_run_empty_profiles_short_circuits(self, mock_webhook, mock_sleep, make_run):
+    def test_run_empty_profiles_short_circuits(self, mock_webhook, make_run):
         """Empty input returns immediately without calling webhook."""
         run = make_run(platform='instagram', filters={})
 
@@ -96,9 +94,8 @@ class TestInstagramCrmSync:
         assert result.processed == 0
         mock_webhook.assert_not_called()
 
-    @patch('app.pipeline.crm.time.sleep')
     @patch('app.pipeline.crm.send_to_hubspot')
-    def test_run_sets_synced_to_crm_flag(self, mock_webhook, mock_sleep, make_run):
+    def test_run_sets_synced_to_crm_flag(self, mock_webhook, make_run):
         """Each profile gets _synced_to_crm=True after successful webhook."""
         profiles = [
             {'email': 'a@test.com', '_lead_analysis': {}, '_creator_profile': {}, '_content_analyses': []},
@@ -110,9 +107,8 @@ class TestInstagramCrmSync:
 
         assert all(p.get('_synced_to_crm') is True for p in profiles)
 
-    @patch('app.pipeline.crm.time.sleep')
     @patch('app.pipeline.crm.send_to_hubspot', side_effect=Exception('Webhook down'))
-    def test_run_handles_webhook_error(self, mock_webhook, mock_sleep, make_run):
+    def test_run_handles_webhook_error(self, mock_webhook, make_run):
         """Webhook errors are caught, counted as skipped, not raised."""
         profiles = [
             {'email': 'a@test.com', '_lead_analysis': {}, '_creator_profile': {}, '_content_analyses': []},
@@ -128,9 +124,8 @@ class TestInstagramCrmSync:
         assert run.contacts_synced == 0
         assert run.duplicates_skipped == 1
 
-    @patch('app.pipeline.crm.time.sleep')
     @patch('app.pipeline.crm.send_to_hubspot')
-    def test_run_passes_correct_args_to_webhook(self, mock_webhook, mock_sleep, make_run):
+    def test_run_passes_correct_args_to_webhook(self, mock_webhook, make_run):
         """Webhook receives lead_analysis, creator_profile, content_analyses from profile."""
         profiles = [
             {
@@ -157,9 +152,8 @@ class TestInstagramCrmSync:
         assert kwargs[1]['first_name'] == 'Test'
         assert kwargs[1]['creator_profile'] == {'content_category': 'travel'}
 
-    @patch('app.pipeline.crm.time.sleep')
     @patch('app.pipeline.crm.send_to_hubspot')
-    def test_run_uses_instagram_handle_as_fallback_contact_id(self, mock_webhook, mock_sleep, make_run):
+    def test_run_uses_instagram_handle_as_fallback_contact_id(self, mock_webhook, make_run):
         """When email is missing, contact_id falls back to instagram_handle."""
         profiles = [
             {
@@ -177,21 +171,21 @@ class TestInstagramCrmSync:
         kwargs = mock_webhook.call_args
         assert kwargs[1]['contact_id'] == 'https://instagram.com/nomail'
 
-    @patch('app.pipeline.crm.time.sleep')
     @patch('app.pipeline.crm.send_to_hubspot')
-    def test_run_rate_limits_between_calls(self, mock_webhook, mock_sleep, make_run):
-        """Sleep is called between webhook calls for rate limiting."""
+    def test_run_uses_thread_pool(self, mock_webhook, make_run):
+        """Webhook calls are parallelized via ThreadPoolExecutor."""
         profiles = [
             {'email': f'{i}@test.com', '_lead_analysis': {}, '_creator_profile': {}, '_content_analyses': []}
             for i in range(3)
         ]
-        run = make_run(id='run-ig-rate', platform='instagram', filters={})
+        run = make_run(id='run-ig-pool', platform='instagram', filters={})
 
         adapter = InstagramCrmSync()
-        adapter.run(profiles, run)
+        result = adapter.run(profiles, run)
 
-        assert mock_sleep.call_count == 3
-        mock_sleep.assert_called_with(0.15)
+        assert mock_webhook.call_count == 3
+        assert result.meta['synced'] == 3
+        assert adapter.MAX_WORKERS == 8
 
 
 # ── PatreonCrmSync ─────────────────────────────────────────────────────────

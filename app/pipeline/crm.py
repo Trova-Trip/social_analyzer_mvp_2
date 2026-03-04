@@ -5,7 +5,9 @@ Instagram: Send each contact to HubSpot via workflow webhook.
 Patreon/Facebook: Batch import (standardize → BDR assign → import_profiles_to_hubspot).
 """
 import logging
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, List, Any
 
 from app.config import BDR_OWNER_IDS
@@ -31,57 +33,69 @@ class InstagramCrmSync(StageAdapter):
     def estimate_cost(self, count: int) -> float:
         return 0.0  # HubSpot API is free-tier
 
+    # HubSpot allows 110 req/10s — 8 workers keeps us well under.
+    MAX_WORKERS = 8
+
+    def _send_one(self, p, run, lock):
+        """Send a single profile to HubSpot webhook. Thread-safe."""
+        lead_analysis = p.get('_lead_analysis', {})
+        creator_profile = p.get('_creator_profile', {})
+        content_analyses = p.get('_content_analyses', [])
+        section_scores = lead_analysis.get('section_scores', {})
+        contact_id = p.get('email') or p.get('instagram_handle', '')
+
+        try:
+            send_to_hubspot(
+                contact_id=contact_id,
+                lead_score=lead_analysis.get('lead_score', 0.0),
+                section_scores=section_scores,
+                score_reasoning=lead_analysis.get('score_reasoning', ''),
+                creator_profile=creator_profile,
+                content_analyses=content_analyses,
+                lead_analysis=lead_analysis,
+                first_name=p.get('_first_name', 'there'),
+            )
+            p['_synced_to_crm'] = True
+            with lock:
+                run.increment_stage_progress('crm_sync', 'completed')
+            return None  # success
+        except Exception as e:
+            logger.error("Webhook error for %s: %s", contact_id, e)
+            with lock:
+                run.increment_stage_progress('crm_sync', 'failed')
+            return f"{contact_id}: {str(e)}"
+
     def run(self, profiles, run) -> StageResult:
         if not profiles:
             return StageResult(profiles=[], processed=0)
 
-        synced = 0
-        skipped = 0
         errors = []
+        lock = threading.Lock()
 
-        for p in profiles:
-            lead_analysis = p.get('_lead_analysis', {})
-            creator_profile = p.get('_creator_profile', {})
-            content_analyses = p.get('_content_analyses', [])
-            section_scores = lead_analysis.get('section_scores', {})
-            contact_id = p.get('email') or p.get('instagram_handle', '')
+        with ThreadPoolExecutor(max_workers=self.MAX_WORKERS) as pool:
+            futures = {
+                pool.submit(self._send_one, p, run, lock): p
+                for p in profiles
+            }
+            for future in as_completed(futures):
+                err = future.result()
+                if err:
+                    errors.append(err)
 
-            try:
-                send_to_hubspot(
-                    contact_id=contact_id,
-                    lead_score=lead_analysis.get('lead_score', 0.0),
-                    section_scores=section_scores,
-                    score_reasoning=lead_analysis.get('score_reasoning', ''),
-                    creator_profile=creator_profile,
-                    content_analyses=content_analyses,
-                    lead_analysis=lead_analysis,
-                    first_name=p.get('_first_name', 'there'),
-                )
-                p['_synced_to_crm'] = True
-                synced += 1
-                run.increment_stage_progress('crm_sync', 'completed')
-            except Exception as e:
-                logger.error("Webhook error for %s: %s", contact_id, e)
-                errors.append(f"{contact_id}: {str(e)}")
-                skipped += 1
-                run.increment_stage_progress('crm_sync', 'failed')
-
-            # Rate limit: stay well under 100 req/10s
-            time.sleep(0.15)
-
+        synced = len(profiles) - len(errors)
         run.contacts_synced = synced
-        run.duplicates_skipped = skipped
+        run.duplicates_skipped = len(errors)
         run.save()
 
-        logger.info("Webhook sync: %d sent, %d failed", synced, skipped)
+        logger.info("Webhook sync: %d sent, %d failed", synced, len(errors))
 
         return StageResult(
             profiles=profiles,
             processed=len(profiles),
             failed=len(errors),
-            skipped=skipped,
+            skipped=len(errors),
             errors=errors,
-            meta={'synced': synced, 'skipped': skipped},
+            meta={'synced': synced, 'skipped': len(errors)},
         )
 
 
