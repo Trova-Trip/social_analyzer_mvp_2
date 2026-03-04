@@ -5921,7 +5921,7 @@ def run_enrollment_dispatcher(self):
     active_contacts = hubspot_search_contacts_all(
         filters=[
             {'propertyName': 'reply_sequence_queue_status',
-             'operator': 'EQ', 'value': 'active'}
+             'operator': 'CONTAINS_TOKEN', 'value': 'active'}
         ],
         properties=[
             'reply_io_sequence',
@@ -5953,7 +5953,7 @@ def run_enrollment_dispatcher(self):
     queued_contacts = hubspot_search_contacts_all(
         filters=[
             {'propertyName': 'reply_sequence_queue_status',
-             'operator': 'EQ', 'value': 'queued'}
+             'operator': 'CONTAINS_TOKEN', 'value': 'queued'}
         ],
         properties=[
             'primary_category',
