@@ -22,6 +22,7 @@ class DbRun(Base):
     profiles_scored = Column(Integer, default=0)
     contacts_synced = Column(Integer, default=0)
     duplicates_skipped = Column(Integer, default=0)
+    hubspot_duplicates = Column(Integer, default=0)
     tier_distribution = Column(JSON, default=dict)
     error_count = Column(Integer, default=0)
     summary = Column(Text, nullable=True)

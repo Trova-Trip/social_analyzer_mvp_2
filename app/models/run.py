@@ -47,6 +47,7 @@ class Run:
         self.profiles_scored = 0
         self.contacts_synced = 0
         self.duplicates_skipped = 0
+        self.hubspot_duplicates = 0
         self.bdr_assignment = bdr_assignment
         self.errors: List[Dict] = []
         self.tier_distribution = {
@@ -75,6 +76,7 @@ class Run:
             'profiles_scored': self.profiles_scored,
             'contacts_synced': self.contacts_synced,
             'duplicates_skipped': self.duplicates_skipped,
+            'hubspot_duplicates': self.hubspot_duplicates,
             'bdr_assignment': self.bdr_assignment,
             'errors': self.errors[-20:],  # Keep last 20 errors
             'tier_distribution': self.tier_distribution,
@@ -150,6 +152,7 @@ class Run:
         run.profiles_scored = db_run.profiles_scored or 0
         run.contacts_synced = db_run.contacts_synced or 0
         run.duplicates_skipped = db_run.duplicates_skipped or 0
+        run.hubspot_duplicates = db_run.hubspot_duplicates or 0
         run.bdr_assignment = db_run.bdr_assignment or ''
         run.errors = []
         run.tier_distribution = db_run.tier_distribution or {}
@@ -182,6 +185,7 @@ class Run:
             run.profiles_scored = d.get('profiles_scored', 0)
             run.contacts_synced = d.get('contacts_synced', 0)
             run.duplicates_skipped = d.get('duplicates_skipped', 0)
+            run.hubspot_duplicates = d.get('hubspot_duplicates', 0)
             run.bdr_assignment = d.get('bdr_assignment', '')
             run.errors = d.get('errors', [])
             run.tier_distribution = d.get('tier_distribution', {})

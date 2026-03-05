@@ -284,8 +284,11 @@ def run_pipeline(run_id: str, retry_from_stage: str = None):
             if stage_name == 'discovery' and profiles and run.platform == 'instagram':
                 try:
                     from app.services.hubspot import hubspot_batch_create
-                    profiles, hs_created, hs_skipped = hubspot_batch_create(profiles, run)
-                    logger.info("HubSpot batch create: %d created, %d skipped", hs_created, hs_skipped)
+                    profiles, hs_created, hs_dupes = hubspot_batch_create(profiles, run)
+                    run.hubspot_duplicates = hs_dupes
+                    run.profiles_found = len(profiles)
+                    run.save()
+                    logger.info("HubSpot batch create: %d created, %d dupes dropped", hs_created, hs_dupes)
                 except Exception as e:
                     logger.error("HubSpot batch create failed (non-fatal): %s", e)
 
@@ -348,6 +351,7 @@ def _generate_run_summary(run, failed: bool = False) -> str:
     """
     found = run.profiles_found or 0
     dupes = run.duplicates_skipped or 0
+    hs_dupes = run.hubspot_duplicates or 0
     prescreened = run.profiles_pre_screened or 0
     enriched = run.profiles_enriched or 0
     scored = run.profiles_scored or 0
@@ -376,8 +380,13 @@ def _generate_run_summary(run, failed: bool = False) -> str:
 
     # Discovery line
     discovery = f"Discovered {found} {platform} profiles"
+    removals = []
     if dupes:
-        discovery += f" ({dupes} duplicates removed)"
+        removals.append(f"{dupes} duplicates removed")
+    if hs_dupes:
+        removals.append(f"{hs_dupes} already in HubSpot")
+    if removals:
+        discovery += f" ({', '.join(removals)})"
     discovery += "."
     lines.append(discovery)
 

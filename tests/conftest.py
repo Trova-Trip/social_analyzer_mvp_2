@@ -17,6 +17,8 @@ def db_engine():
     import app.models.filter_history
     import app.models.preset
     import app.models.metric_snapshot
+    import app.models.enrollment_run
+    import app.models.app_config
     Base.metadata.create_all(engine)
     yield engine
     engine.dispose()
@@ -94,6 +96,7 @@ def make_run():
             profiles_scored=0,
             contacts_synced=0,
             duplicates_skipped=0,
+            hubspot_duplicates=0,
             tier_distribution={
                 'auto_enroll': 0,
                 'standard_review': 0,
