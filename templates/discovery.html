@@ -768,9 +768,12 @@ function buildFilters(opts) {
         if (minPPM > 0) filters.min_posts_per_month = minPPM;
     }
 
-    // Budget (shared across all platforms)
-    const budgetVal = document.getElementById('budget-input').value.trim();
-    if (budgetVal) filters.max_budget = parseFloat(budgetVal);
+    // Budget (shared across all platforms) — input hidden until real cost data available
+    const budgetEl = document.getElementById('budget-input');
+    if (budgetEl) {
+        const budgetVal = budgetEl.value.trim();
+        if (budgetVal) filters.max_budget = parseFloat(budgetVal);
+    }
 
     return filters;
 }
