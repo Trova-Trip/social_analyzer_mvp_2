@@ -204,6 +204,47 @@ def update_run(run_id):
         return jsonify({'error': str(e)}), 500
 
 
+@bp.route('/api/runs/cleanup', methods=['DELETE'])
+def cleanup_old_runs():
+    """Delete all runs created before today (UTC). Cascades to lead_runs and filter_history."""
+    from datetime import datetime, timezone
+    from app.database import get_session
+    from app.models.db_run import DbRun
+    from app.models.lead_run import LeadRun
+    from app.models.filter_history import FilterHistory
+    from app.extensions import redis_client
+
+    try:
+        session = get_session()
+        today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        old_runs = session.query(DbRun).filter(DbRun.created_at < today).all()
+        old_ids = [r.id for r in old_runs]
+
+        if not old_ids:
+            session.close()
+            return jsonify({'deleted': 0, 'message': 'No old runs found'})
+
+        lr = session.query(LeadRun).filter(LeadRun.run_id.in_(old_ids)).delete(synchronize_session=False)
+        fh = session.query(FilterHistory).filter(FilterHistory.run_id.in_(old_ids)).delete(synchronize_session=False)
+        dr = session.query(DbRun).filter(DbRun.created_at < today).delete(synchronize_session=False)
+        session.commit()
+        session.close()
+
+        # Clean Redis
+        for rid in old_ids:
+            redis_client.delete(f'run:{rid}')
+            redis_client.zrem('runs:list', rid)
+
+        return jsonify({
+            'deleted_runs': dr,
+            'deleted_lead_runs': lr,
+            'deleted_filter_history': fh,
+            'cleaned_redis': len(old_ids),
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 @bp.route('/partials/run-detail/<run_id>')
 def run_detail_partial(run_id):
     """HTMX partial: full run detail content (fallback for non-SSE clients)."""
