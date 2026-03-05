@@ -257,7 +257,6 @@ class TestCircuitBreakerRegistry:
         assert 'apify' in breakers
         assert 'hubspot' in breakers
         assert 'apollo' in breakers
-        assert 'anthropic' in breakers
         # Also registered globally
         all_b = get_all_breakers()
         assert 'insightiq' in all_b

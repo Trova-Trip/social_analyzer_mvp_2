@@ -252,7 +252,6 @@ def init_breakers(redis_client):
         'apify': CircuitBreaker('apify', redis_client, failure_threshold=3, reset_timeout=300),
         'hubspot': CircuitBreaker('hubspot', redis_client, failure_threshold=3, reset_timeout=180),
         'apollo': CircuitBreaker('apollo', redis_client, failure_threshold=5, reset_timeout=120),
-        'anthropic': CircuitBreaker('anthropic', redis_client, failure_threshold=5, reset_timeout=60),
     }
     _registry.update(breakers)
     return breakers
