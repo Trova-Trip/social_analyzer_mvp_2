@@ -5537,18 +5537,26 @@ ENROLLMENT_INBOXES = {
 }
 
 # ── Inbox outreach-type constraints ──────────────────────────────────────────
-# Only Kendall handles interest_check and self_service.
-# All inboxes handle schedule_call.
+# Kendall only: interest_check, self_service.
+# All inboxes: schedule_call, rewarm_schedule_call.
 INBOX_ALLOWED_TYPES = {
-    'Dom':     ['schedule_call'],
-    'Jenn':    ['schedule_call'],
-    'Kendall': ['schedule_call', 'interest_check', 'self_service'],
-    'Ryan':    ['schedule_call'],
+    'Dom':     ['schedule_call', 'rewarm_schedule_call'],
+    'Jenn':    ['schedule_call', 'rewarm_schedule_call'],
+    'Kendall': ['schedule_call', 'rewarm_schedule_call', 'interest_check', 'self_service'],
+    'Ryan':    ['schedule_call', 'rewarm_schedule_call'],
 }
 
 # ── Default configuration (stored / overridden in Redis) ─────────────────────
 _DEFAULT_CADENCE  = [0, 2, 4, 7, 11]            # calendar-day offsets
-_DEFAULT_WEIGHTS  = {'schedule_call': 3, 'interest_check': 2, 'self_service': 1}
+# Weights control proportional slot allocation per outreach type.
+# schedule_call : rewarm_schedule_call = 3 : 2 → 60% / 40% of the combined pool.
+# interest_check and self_service draw from Kendall's capacity only.
+_DEFAULT_WEIGHTS  = {
+    'schedule_call':        3,
+    'rewarm_schedule_call': 2,
+    'interest_check':       2,
+    'self_service':         1,
+}
 _DEFAULT_MAX_DAY  = 200                          # max emails per inbox per day
 
 HUBSPOT_API_URL_ENROLL = 'https://api.hubapi.com'   # reuse existing key
