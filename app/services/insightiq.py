@@ -297,9 +297,11 @@ class InsightIQDiscovery:
                 'max': follower_filter.get('max', 900000),
             }
 
-        # Lookalike — API expects a username string
+        # Lookalike — API expects a username string with @ prefix
         lookalike_type = user_filters.get('lookalike_type')
-        lookalike_username = user_filters.get('lookalike_username', '').strip().lstrip('@')
+        lookalike_username = user_filters.get('lookalike_username', '').strip()
+        if lookalike_username and not lookalike_username.startswith('@'):
+            lookalike_username = f'@{lookalike_username}'
         if lookalike_type == 'creator' and lookalike_username:
             parameters['creator_lookalikes'] = lookalike_username
         elif lookalike_type == 'audience' and lookalike_username:
