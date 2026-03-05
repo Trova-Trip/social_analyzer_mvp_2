@@ -201,7 +201,11 @@ def check_existing_contacts(emails: List[str]) -> set:
 
 
 def import_profiles_to_hubspot(profiles: List[Dict], job_id: str) -> Dict:
-    """Import standardized profiles to HubSpot via batch contacts API."""
+    """Import standardized profiles to HubSpot via batch contacts API.
+
+    Returns dict with 'created', 'skipped' counts and 'id_map' mapping
+    objectWriteTraceId → HubSpot contact ID (for both new and existing).
+    """
     if not HUBSPOT_API_KEY:
         raise ValueError("HUBSPOT_API_KEY must be set in environment")
 
@@ -215,6 +219,7 @@ def import_profiles_to_hubspot(profiles: List[Dict], job_id: str) -> Dict:
 
     created_count = 0
     skipped_count = 0
+    id_map = {}  # objectWriteTraceId → HubSpot contact ID
     total_batches = (len(contacts) + 99) // 100
 
     logger.info("Importing %d contacts in %d batches", len(contacts), total_batches)
@@ -237,19 +242,35 @@ def import_profiles_to_hubspot(profiles: List[Dict], job_id: str) -> Dict:
                 timeout=30,
             )
 
-            if resp.status_code == 201:
-                created_count += len(batch)
-                logger.info("Batch %d/%d: %d created", batch_num, total_batches, len(batch))
-            elif resp.status_code == 207:
+            if resp.status_code in (201, 207):
                 result = resp.json()
+                # Capture IDs from created contacts
+                for r in result.get('results', []):
+                    trace_id = r.get('objectWriteTraceId')
+                    hs_id = r.get('id')
+                    if trace_id and hs_id:
+                        id_map[trace_id] = hs_id
+
+                # Capture IDs from duplicates ("Existing ID: 12345" in error message)
+                import re
+                for err in result.get('errors', []):
+                    msg = err.get('message', '')
+                    match = re.search(r'Existing ID:\s*(\d+)', msg)
+                    trace_ids = err.get('context', {}).get('objectWriteTraceId', [])
+                    if match and trace_ids:
+                        id_map[trace_ids[0]] = match.group(1)
+
                 batch_created = len(result.get('results', []))
-                batch_errors = result.get('errors', [])
-                batch_skipped = len(batch_errors)
-                created_count += batch_created
-                skipped_count += batch_skipped
-                logger.warning("Batch %d/%d: %d created, %d duplicates/errors", batch_num, total_batches, batch_created, batch_skipped)
-                for err in batch_errors[:3]:
-                    logger.warning("  Error: %s", err.get('message', 'Unknown'))
+                batch_skipped = len(result.get('errors', []))
+                if resp.status_code == 201:
+                    created_count += len(batch)
+                    logger.info("Batch %d/%d: %d created", batch_num, total_batches, len(batch))
+                else:
+                    created_count += batch_created
+                    skipped_count += batch_skipped
+                    logger.warning("Batch %d/%d: %d created, %d duplicates/errors", batch_num, total_batches, batch_created, batch_skipped)
+                    for err in result.get('errors', [])[:3]:
+                        logger.warning("  Error: %s", err.get('message', 'Unknown'))
             else:
                 logger.error("Batch %d error: %d — %s", batch_num, resp.status_code, resp.text[:200])
                 skipped_count += len(batch)
@@ -261,8 +282,8 @@ def import_profiles_to_hubspot(profiles: List[Dict], job_id: str) -> Dict:
         if i + 100 < len(contacts):
             time.sleep(0.5)
 
-    logger.info("Import complete: %d created, %d skipped", created_count, skipped_count)
-    return {'created': created_count, 'skipped': skipped_count}
+    logger.info("Import complete: %d created, %d skipped, %d IDs captured", created_count, skipped_count, len(id_map))
+    return {'created': created_count, 'skipped': skipped_count, 'id_map': id_map}
 
 
 def hubspot_batch_create(profiles: List[Dict], run) -> tuple:
@@ -292,7 +313,17 @@ def hubspot_batch_create(profiles: List[Dict], run) -> tuple:
         result = import_profiles_to_hubspot(profiles, run.id)
         created = result.get('created', 0)
         skipped = result.get('skipped', 0)
-        logger.info("HubSpot batch create: %d created, %d skipped", created, skipped)
+        id_map = result.get('id_map', {})
+
+        # Map HubSpot contact IDs back onto profiles via objectWriteTraceId
+        for idx, p in enumerate(profiles):
+            trace_id = f"{run.id}_{idx}"
+            hs_id = id_map.get(trace_id)
+            if hs_id:
+                p['_hubspot_contact_id'] = hs_id
+
+        mapped = sum(1 for p in profiles if '_hubspot_contact_id' in p)
+        logger.info("HubSpot batch create: %d created, %d skipped, %d IDs mapped", created, skipped, mapped)
     except Exception as e:
         logger.error("HubSpot batch create failed: %s", e)
         created, skipped = 0, 0

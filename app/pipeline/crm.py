@@ -42,7 +42,7 @@ class InstagramCrmSync(StageAdapter):
         creator_profile = p.get('_creator_profile', {})
         content_analyses = p.get('_content_analyses', [])
         section_scores = lead_analysis.get('section_scores', {})
-        contact_id = p.get('email') or p.get('instagram_handle', '')
+        contact_id = p.get('_hubspot_contact_id') or p.get('email') or p.get('instagram_handle', '')
 
         try:
             send_to_hubspot(
