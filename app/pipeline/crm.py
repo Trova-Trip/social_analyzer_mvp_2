@@ -10,7 +10,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, List, Any
 
-from app.config import BDR_OWNER_IDS
+from app.config import BDR_OWNER_IDS, HUBSPOT_API_KEY, HUBSPOT_WEBHOOK_URL
 from app.services.hubspot import send_to_hubspot, import_profiles_to_hubspot
 from app.services.apify import (
     assign_bdr_round_robin,
@@ -68,6 +68,20 @@ class InstagramCrmSync(StageAdapter):
     def run(self, profiles, run) -> StageResult:
         if not profiles:
             return StageResult(profiles=[], processed=0)
+
+        if run.filters.get('dry_run'):
+            logger.info("Dry run — skipping CRM sync for %d profiles", len(profiles))
+            for p in profiles:
+                p['_synced_to_crm'] = False
+                run.increment_stage_progress('crm_sync', 'completed')
+            return StageResult(profiles=profiles, processed=len(profiles))
+
+        if not HUBSPOT_WEBHOOK_URL:
+            logger.warning("HUBSPOT_WEBHOOK_URL not set — skipping CRM sync")
+            for p in profiles:
+                p['_synced_to_crm'] = False
+                run.increment_stage_progress('crm_sync', 'completed')
+            return StageResult(profiles=profiles, processed=len(profiles))
 
         errors = []
         lock = threading.Lock()
@@ -149,6 +163,18 @@ class PatreonCrmSync(StageAdapter):
         if not profiles:
             return StageResult(profiles=[], processed=0)
 
+        if run.filters.get('dry_run'):
+            logger.info("Dry run — skipping Patreon CRM sync for %d profiles", len(profiles))
+            for p in profiles:
+                run.increment_stage_progress('crm_sync', 'completed')
+            return StageResult(profiles=profiles, processed=len(profiles))
+
+        if not HUBSPOT_API_KEY:
+            logger.warning("HUBSPOT_API_KEY not set — skipping Patreon CRM sync")
+            for p in profiles:
+                run.increment_stage_progress('crm_sync', 'completed')
+            return StageResult(profiles=profiles, processed=len(profiles))
+
         bdr_names = run.filters.get('bdr_names', list(BDR_OWNER_IDS.keys()))
 
         standardized = standardize_patreon_profiles(profiles)
@@ -184,6 +210,18 @@ class FacebookCrmSync(StageAdapter):
     def run(self, profiles, run) -> StageResult:
         if not profiles:
             return StageResult(profiles=[], processed=0)
+
+        if run.filters.get('dry_run'):
+            logger.info("Dry run — skipping Facebook CRM sync for %d profiles", len(profiles))
+            for p in profiles:
+                run.increment_stage_progress('crm_sync', 'completed')
+            return StageResult(profiles=profiles, processed=len(profiles))
+
+        if not HUBSPOT_API_KEY:
+            logger.warning("HUBSPOT_API_KEY not set — skipping Facebook CRM sync")
+            for p in profiles:
+                run.increment_stage_progress('crm_sync', 'completed')
+            return StageResult(profiles=profiles, processed=len(profiles))
 
         bdr_names = run.filters.get('bdr_names', list(BDR_OWNER_IDS.keys()))
 

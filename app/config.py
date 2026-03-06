@@ -41,6 +41,9 @@ R2_BUCKET_NAME = os.getenv('R2_BUCKET_NAME')
 R2_ENDPOINT_URL = os.getenv('R2_ENDPOINT_URL')
 R2_PUBLIC_URL = os.getenv('R2_PUBLIC_URL')
 
+# ── Safety caps ──────────────────────────────────────────────────────────────
+DISCOVERY_MAX_CAP = int(os.getenv('STAGING_DISCOVERY_CAP', 0)) or None  # None = no cap
+
 # ── External services ─────────────────────────────────────────────────────────
 APIFY_API_TOKEN = os.getenv('APIFY_API_TOKEN')
 APOLLO_API_KEY = os.getenv('APOLLO_API_KEY')
@@ -67,6 +70,14 @@ BDR_OWNER_IDS = {
 PIPELINE_STAGES = [
     'discovery',
     'pre_screen',
+    'enrichment',
+    'analysis',
+    'scoring',
+    'crm_sync',
+]
+
+REWARM_PIPELINE_STAGES = [
+    'segment_import',
     'enrichment',
     'analysis',
     'scoring',
